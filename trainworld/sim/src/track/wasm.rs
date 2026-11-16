@@ -423,6 +423,25 @@ impl TrackApi {
     pub fn set_line_holidays(&mut self, packed: Vec<f64>) {
         self.boarding.set_holidays(&packed);
     }
+    /// Each line's days whose kind is not the week's (`params::row_of_day`), so its weekend and
+    /// holiday trains (`LineData::rest`) run on its country's days: per line its id, a count, then
+    /// that many pairs of a local game day and its kind (0 weekdays, 1 weekend days, 2 holidays), within `service::CAL_DAYS` of each other. Replaces the last list; a line
+    /// left out follows the week. Its departures read it (`service::Cal`).
+    pub fn set_line_rows(&mut self, packed: Vec<f64>) {
+        let mut cal = vec![crate::track::service::Cal::NONE; self.w.net.line_count()];
+        let mut i = 0;
+        while i + 1 < packed.len() {
+            let (id, n) = (packed[i] as usize, packed[i + 1] as usize);
+            i += 2;
+            let Some(days) = packed.get(i..i + 2 * n) else { break };
+            i += 2 * n;
+            let pairs: Vec<(i64, u8)> = days.chunks_exact(2).map(|d| (d[0] as i64, d[1] as u8)).collect();
+            if id < cal.len() {
+                cal[id] = crate::track::service::Cal::from_days(&pairs);
+            }
+        }
+        self.w.svc.set_cal(cal);
+    }
     /// A line's day in the boarding account for its panel (T-230, `Boarding::line_summary`), on
     /// a kind of day (T-260); empty before riders.
     pub fn line_account(&self, line: u32, day: u32) -> Vec<f64> {
@@ -2131,7 +2150,7 @@ impl TrackApi {
         let Some(path) = self.w.net.route(stops) else {
             return self.refuse(Issue::LinePath { line: id });
         };
-        self.run(Op::Line { id, data: Some(LineData { symbol: String::new(), trains: None, auto: None, name, colour, stops: stops.to_vec(), path, tph: [high, medium, low], dwell_s, turnaround_s, cars, fast: false, bus: None, ferry: None, group: 0, group_name: String::new(), group_look: Default::default(), day: 0, hand: false, one_way: false, limit: 0, twin: Default::default() }) })
+        self.run(Op::Line { id, data: Some(LineData { symbol: String::new(), trains: None, auto: None, name, colour, stops: stops.to_vec(), path, tph: [high, medium, low], dwell_s, turnaround_s, cars, fast: false, bus: None, ferry: None, group: 0, group_name: String::new(), group_look: Default::default(), day: 0, hand: false, one_way: false, limit: 0, twin: Default::default(), rest: None }) })
     }
     pub(crate) fn set_schedule(&mut self, id: u32, high: f32, medium: f32, low: f32) -> u32 {
         self.run(Op::Schedule { id, tph: [high, medium, low] })

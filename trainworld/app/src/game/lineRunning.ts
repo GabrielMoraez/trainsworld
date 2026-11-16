@@ -6,21 +6,32 @@ import { effect } from "@preact/signals";
 import { t } from "../i18n";
 import { computed } from "@preact/signals";
 import { demandAt, lineSeconds } from "./clock";
+import { lineCountry, rowIn } from "./holidays";
 import { DEMAND_INDEX, type LineStats } from "./types";
-import { pendingTrains, world } from "./world";
+import { linesById, restShown, world } from "./world";
+
+/** A line's trains at level `lev` on its kind of day now in its own local time (weekdays, weekend
+ * days or holidays, by its country's calendar; `restShown`). */
+export function trainsNowAt(id: string, lev: number): number {
+  const w = world.value, st = w?.lineStats[id], l = w ? linesById(w).get(id) : undefined;
+  if (!st || !l) return 0;
+  const row = rowIn(lineCountry(l.stops), Math.floor(lineSeconds(st) / 86400));
+  return restShown(id, row)?.[lev] ?? 0;
+}
 
 /** The ids of the lines with no trains at their level now (T-1783's test: a train count of 0, or a
  * headway of 0), or that cannot carry any (a planned or broken line). Counts typed but not yet
  * applied are counted (`pendingTrains`). A line without figures yet is not listed. */
 let last: ReadonlySet<string> = new Set();
 export const idleLines = computed<ReadonlySet<string>>(() => {
-  const w = world.value, pending = pendingTrains.value;
+  const w = world.value;
   const out = new Set<string>();
   if (w) {
     for (const id in w.lineStats) {
       const st: LineStats = w.lineStats[id];
       const lev = DEMAND_INDEX[demandAt(lineSeconds(st))];
-      const n = (pending.get(id) ?? st.trainsNeeded)[lev];
+      // today's kind of day's trains (`restShown` reads the counts still on their way too)
+      const n = trainsNowAt(id, lev);
       if (st.status !== "running" || !(n > 0) || st.autoS?.[lev] === 0) out.add(id);
     }
   }

@@ -84,6 +84,7 @@ interface LineRead {
   loopKind: number;
   oneWay: boolean;
   limit: number;
+  rest: number[];
   shift: number;
   upkeep: number;
   busRow: ClockLine["bus"];
@@ -333,17 +334,17 @@ export class StateRows {
       read.push({
         i, id, ok, running, bus, prev, fresh,
         heavy: fresh ? this.heavy(a, id, ok) : prev!.heavy,
-        auto: a.line_auto(id), fast: a.line_fast(id), tram: a.line_tram(id), loopKind: a.line_loop(id), oneWay: a.line_one_way(id), limit: a.line_limit(id), shift: a.line_shift(id), upkeep: upkeepOf.get(id) ?? 0,
+        auto: a.line_auto(id), fast: a.line_fast(id), tram: a.line_tram(id), loopKind: a.line_loop(id), oneWay: a.line_one_way(id), limit: a.line_limit(id), rest: [...a.line_rest(id)], shift: a.line_shift(id), upkeep: upkeepOf.get(id) ?? 0,
         busRow: bus ? env.busRow(a, id, nodes ?? []) : undefined,
         pairs: bus ? 0 : a.line_pairs(id), twinOf: bus ? -1 : a.line_twin_of(id),
       });
     }
     const out: ClockLine[] = [];
     for (const r of read) {
-      const { i, id, ok, running, prev, fresh, heavy, auto, fast, tram, loopKind, oneWay, limit, shift, upkeep, pairs, twinOf } = r;
+      const { i, id, ok, running, prev, fresh, heavy, auto, fast, tram, loopKind, oneWay, limit, rest, shift, upkeep, pairs, twinOf } = r;
       // the numbers behind the cheap fields: when all are as kept (and the heavy parts are), the row is the kept one
       const raw = li.slice(i, i + 22);
-      const extra = [upkeep, fast ? 1 : 0, tram ? 1 : 0, loopKind, oneWay ? 1 : 0, limit, shift, pairs, twinOf, ...auto];
+      const extra = [upkeep, fast ? 1 : 0, tram ? 1 : 0, loopKind, oneWay ? 1 : 0, limit, shift, pairs, twinOf, ...auto, rest.length, ...rest];
       if (!fresh && prev && sameNumbers(raw, prev.raw) && sameNumbers(extra, prev.extra)) {
         out.push(prev.row);
         continue;
@@ -368,6 +369,7 @@ export class StateRows {
         loopKind,
         oneWay,
         limit,
+        ...(rest.length ? { rest } : {}),
         ...(pairs === 1 || pairs === 2 ? { pairs } : {}),
         ...(twinOf >= 0 ? { twinOf } : {}),
         ...(r.busRow ? { bus: r.busRow } : {}),

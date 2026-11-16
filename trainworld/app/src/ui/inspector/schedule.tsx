@@ -16,13 +16,13 @@ import { accountVersion, capacity } from "../../game/boarding";
 import { onRails, vehicleCars, vehicleOf, type Vehicle } from "../../game/vehicle";
 import { lineSeconds } from "../../game/clock";
 import { DAY_KIND_NAME } from "../../game/days";
-import { kindIn, lineCountry } from "../../game/holidays";
+import { kindIn, lineCountry, rowIn } from "../../game/holidays";
 import { useClockQuery } from "../useClockQuery";
 import { DEMAND_INDEX, DEMANDS, loopHalves, type Demand, type LineInput, type LineStats } from "../../game/types";
 import { pendingLabel } from "../../game/lineFigures";
 import { liveMoney, moneyState, type MoneyState } from "../../game/money";
 import { demandView, lineFiguresIn } from "../../game/demand";
-import { AUTO_SLACK, autoTrainsFor, headwayFromMinutes, headwayShown, nextHeadway, refusedForCash, setAutoTrains, setHeadway, setTrainCount, stepHeadway, stepTrainCount, trainCap, trainsShown, world, MAX_TYPED_VEHICLES } from "../../game/world";
+import { AUTO_SLACK, autoTrainsFor, headwayFromMinutes, headwayShown, nextHeadway, refusedForCash, restShown, setAutoTrains, setHeadway, setTrainCount, stepHeadway, stepRest, stepTrainCount, trainCap, trainsShown, world, MAX_TYPED_VEHICLES } from "../../game/world";
 import { Row, Segmented, Stepper } from "../widgets";
 import { demandPending, Spinner } from "../Spinner";
 
@@ -170,6 +170,34 @@ function LevelCells({ l, st, d, auto, limits }: { l: LineInput; st: LineStats; d
   );
 }
 
+/** The schedule table's sections: a line's trains on each kind of day, one under another. */
+const DAY_SECTIONS = ["weekdays", "weekend", "holidays"] as const;
+
+/** A kind of day's heading row in the schedule table. */
+function DayHeading({ row, v }: { row: number; v: Vehicle }) {
+  const k = DAY_SECTIONS[row];
+  return <tr class="sched-day"><th colSpan={3} data-tip={t("schedule.daySectionTip", { day: k, vehicle: v })}>{t("schedule.daySection", { day: k })}</th></tr>;
+}
+
+/** A level's cells on weekend days (`row` 1) or holidays (2): its count, at most the weekdays'
+ * (`restShown`), and the headway it gives at the weekdays' round trip. */
+function RestCells({ l, st, d, row }: { l: LineInput; st: LineStats; d: Demand; row: number }) {
+  const v = vehicleOf(st), lev = DEMAND_INDEX[d];
+  const n = restShown(l.id, row)?.[lev] ?? 0, most = trainsShown(l.id)?.[lev] ?? 0;
+  const twin = st.twin ? world.value?.save.lines.find((x) => x.id === st.twin) : undefined;
+  const tph = most > 0 ? ((l.tph[d] + (twin?.tph[d] ?? 0)) * n) / most : 0;
+  return (
+    <>
+      <td>
+        <Stepper value={n} label={t("schedule.restLabel", { day: DAY_SECTIONS[row], vehicle: v })}
+          onStep={(s) => stepRest(l.id, row, d, s)}
+          tipUp={n >= most ? t("schedule.restMost", { vehicle: v }) : undefined} />
+      </td>
+      <td>{headway(tph)}</td>
+    </>
+  );
+}
+
 /** T-477, T-515, T-2236, T-2335: a demand level's name in the schedule table, after its crowding dot
  * on today's kind of day (`crowdLevel`, from the boarding account) while `v` has one: the fill graded
  * over the line's stretches, the ring (1 px out with a 1 px gap) at its fullest. One hover for both
@@ -196,6 +224,8 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
   const stops = l.stops.length;
   // T-2661: the crowding bar in a level's hover reads west to east
   const w = world.value, flip = !!w && lineReversed(l, w, !!st.loop);
+  // the line's kind of day now in its local time, whose section holds the level in force
+  const today = rowIn(lineCountry(l.stops), Math.floor(lineSeconds(st) / 86400));
   return (
     <>
       <div class={label ? "h set-by" : "h"}>
@@ -220,17 +250,29 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
           <th>{manyCap(v)}</th>
           <th>{t("schedule.headway")}</th>
         </tr>
+        <DayHeading row={0} v={v} />
         {DEMANDS.map((d) => {
           // T-1783: no dot on a level with no vehicles
           const dot = st.status === "running" && (trainsShown(l.id) ?? st.trainsNeeded)[DEMAND_INDEX[d]] > 0;
           const p = dot && crowd && lineFiguresIn(demandView.value, l.id, stops) ? crowd : null;
           return (
-            <tr class={d === now ? "now" : ""}>
+            <tr class={d === now && today === 0 ? "now" : ""}>
               <td><LevelName v={p} d={d} stops={stops} flip={flip} ends={endNames(l)} vehicle={vehicleOf(st)} pending={dot && !p && demandPending.value} /></td>
               <LevelCells l={l} st={st} d={d} auto={auto} limits={limits} />
             </tr>
           );
         })}
+        {[1, 2].map((row) => (
+          <>
+            <DayHeading row={row} v={v} />
+            {DEMANDS.map((d) => (
+              <tr class={d === now && today === row ? "now" : ""}>
+                <td><span data-tip={levelTimes(d)}>{demandLabel(d)}</span></td>
+                <RestCells l={l} st={st} d={d} row={row} />
+              </tr>
+            ))}
+          </>
+        ))}
       </table>
     </>
   );

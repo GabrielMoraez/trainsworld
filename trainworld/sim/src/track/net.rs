@@ -266,6 +266,10 @@ pub struct LineData {
     /// T-3333: the line runs on both pairs of quad track (`Parent`), or is the hidden twin that runs
     /// the other pair for one (`Of`).
     pub twin: super::twin::Twin,
+    /// Whole trains at high, medium and low demand on weekend days and on holidays (`params::WEEKEND`,
+    /// `HOLIDAYS`, less one), each at most the weekday's count of its level (`trains`); None: every
+    /// kind of day runs the weekdays'. Saved in `LDT1`.
+    pub rest: Option<[[u32; 3]; 2]>,
 }
 
 /// A line group's bullet set by hand (T-1813): its text (empty for the name's own) and its colour
@@ -505,6 +509,8 @@ pub struct Network {
     pub line_hand: Vec<bool>,
     pub line_one_way: Vec<bool>,
     pub line_limit: Vec<u16>,
+    /// Each line's weekend and holiday counts (`LineData::rest`).
+    pub line_rest: Vec<Option<[[u32; 3]; 2]>>,
     /// T-3333: `LineData::twin`.
     pub line_twin: Vec<super::twin::Twin>,
     pub line_name: Vec<String>,
@@ -724,6 +730,21 @@ impl Network {
         }
     }
 
+    /// A line's trains an hour at level `lev` on kind of day `row` (`params::WEEKDAYS`, `WEEKEND`,
+    /// `HOLIDAYS`): the weekdays' `line_tph`, or on a weekend day or holiday its own count
+    /// (`LineData::rest`, at most the weekdays') over the weekdays' at the weekdays' round trip, which
+    /// fewer trains can only shorten.
+    pub fn line_tph_on(&self, l: usize, row: usize, lev: usize) -> f32 {
+        let tph = self.line_tph.get(l).map_or(0.0, |t| t[lev]);
+        let rest = self.line_rest.get(l).copied().flatten();
+        match (row, rest) {
+            (WEEKEND | HOLIDAYS, Some(c)) => {
+                let n = self.line_trains.get(l).copied().flatten().map_or(0, |t| t[lev]);
+                if n > 0 { tph * c[row - 1][lev].min(n) as f32 / n as f32 } else { 0.0 }
+            }
+            _ => tph,
+        }
+    }
     /// T-1925: a line's departure phase per level, seconds (`line_phase`; 0 where none is set).
     pub fn line_phase_of(&self, l: u32) -> [f32; 3] {
         self.line_phase.get(l as usize).copied().unwrap_or([0.0; 3])
@@ -848,6 +869,7 @@ impl Network {
             line_hand: vec![],
             line_one_way: vec![],
             line_limit: vec![],
+            line_rest: vec![],
             line_twin: vec![],
             line_name: vec![],
             line_symbol: vec![],
@@ -1104,6 +1126,7 @@ impl Network {
         self.line_hand.push(false);
         self.line_one_way.push(false);
         self.line_limit.push(0);
+        self.line_rest.push(None);
         self.line_twin.push(Default::default());
     }
     fn claim_node(&mut self, id: u32) {
@@ -1181,6 +1204,7 @@ impl Network {
                 one_way: self.line_one_way[i],
                 limit: self.line_limit[i],
                 twin: self.line_twin[i],
+                rest: self.line_rest[i],
             }
         })
     }
@@ -1670,6 +1694,7 @@ impl Network {
                 self.line_hand[i] = d.hand && d.bus.is_none() && d.ferry.is_none();
                 self.line_one_way[i] = d.one_way;
                 self.line_limit[i] = d.limit;
+                self.line_rest[i] = d.rest;
                 self.line_twin[i] = if d.bus.is_some() || d.ferry.is_some() { Default::default() } else { d.twin };
                 self.line_bus[i] = d.bus;
                 self.line_ferry[i] = d.ferry;
@@ -1687,6 +1712,7 @@ impl Network {
                 self.line_hand[i] = false;
                 self.line_one_way[i] = false;
                 self.line_limit[i] = 0;
+                self.line_rest[i] = None;
                 self.line_twin[i] = Default::default();
                 self.line_bus[i] = None;
                 self.line_ferry[i] = None;

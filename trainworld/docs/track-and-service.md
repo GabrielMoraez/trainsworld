@@ -1121,8 +1121,18 @@ line panel's round-trip split, waiting at busy track among it: [ui-inspectors.md
 - **Scheduling** (T-104, Anita): every line sets a whole number of trains on the entire line,
   both directions together, for **high, medium and low demand** (the column header is "Demand").
   High runs 6-20 (the morning peak, midday and evening peak), medium 20-24, low 0-6
-  (`PERIOD_LEVEL`; Anita, 2026-10-27, T-1536) on every kind of day, weekends and holidays too
-  (T-2335, [demand-timing.md](demand-timing.md) "Kinds of day"). New rail lines start at 0 / 0 / 0 and each level is
+  (`PERIOD_LEVEL`; Anita, 2026-10-27, T-1536) on every kind of day. **Weekend and holiday trains**
+  (`LineData::rest`, `Network::line_rest`): a line may set its own count per level for weekend days
+  and for holidays, each at most its weekday count of that level, so the track the weekday trains
+  were checked against always holds them; with none every day runs the weekday counts (T-2335). A
+  day's kind is the week's (`params::row_of_day`: Saturday and Sunday the weekend) unless the line's
+  calendar says otherwise (`service::Cal`, 12 local days the clock worker sends,
+  `TrackApi::set_line_rows`, from `rowOfIn` in `game/holidayCalendar.ts`): public holidays and a
+  superholiday's days away and back are holidays, a country's own weekend its weekend, the weekend
+  days it works weekdays. Those days run `Network::line_tph_on`: the weekday rate times the count over
+  the weekday count, at the weekday round trip. A change is an undoable line edit
+  (`TrackApi::set_line_rest`), saved in a trailing `LDT1` block ([demand-timing.md](demand-timing.md)
+  "Kinds of day"). New rail lines start at 0 / 0 / 0 and each level is
   set on its own, so a line given trains at high alone stops at 20:00 (T-2123; the tutorial's last
   steps ask for trains at every level); bus lines start with buses at every level; zero means no new departures. The panel shows the integer allocation and resulting headway.
   Frequency is derived from the capacity-adjusted round trip, with a bounded solve on edits (at
@@ -1185,8 +1195,8 @@ line panel's round-trip split, waiting at busy track among it: [ui-inspectors.md
   trailing `LAU1` block of the track save (line index and three headways, only when a line has
   them); a save without it loads every line by hand.
 - **Departures** (`Service::run_deps`): per stretch of one level (consecutive periods at the same
-  level: high demand's 6-20 is one stretch, `level_stretches`, T-1536; every kind of day the same,
-  T-2335) of the line's local time (T-309: its first
+  level: high demand's 6-20 is one stretch, `level_stretches`, T-1536; each day at its kind's
+  trains, `Lattice::levels_on` and `slot`) of the line's local time (T-309: its first
   stop's region's, `Lattice::shift`; a New York to Toronto line is on one offset, a London to
   Paris line would run on London's), the first departure half a one-way run before the stretch's
   start and then one a headway, until half a run before its end (T-835, `Lattice::lead`: the mean

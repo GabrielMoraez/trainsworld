@@ -144,6 +144,45 @@ function changeTrains(id: LineId, demand: Demand, to: (now: number, step: number
   return true;
 }
 
+// ---- Weekend and holiday trains (`LineStats.rest`, `TrackApi.set_line_rest`): each level's count on
+// weekend days and on holidays, at most the weekdays' count of that level (fewer trains only ever
+// free the track the weekdays' were checked against).
+
+/** Counts sent and not yet in the world, as `pendingTrains`. */
+const pendingRest = signal<ReadonlyMap<LineId, number[]>>(new Map());
+
+/** A line's trains on kind of day `row` (1 weekend days, 2 holidays) per level as they show: its own,
+ * at most the weekdays', or the weekdays' where it has none of its own; row 0 the weekdays'. */
+export function restShown(id: LineId, row: number): [number, number, number] | null {
+  const wk = trainsShown(id);
+  if (!wk || row === 0) return wk;
+  const st = world.value?.lineStats[id];
+  const own = pendingRest.value.get(id) ?? st?.rest;
+  return wk.map((n, lev) => (own && own.length === 6 ? Math.min(own[(row - 1) * 3 + lev], n) : n)) as [number, number, number];
+}
+
+/** Step a line's trains for a level on weekend days or holidays (`row` 1 or 2), between none and
+ * the weekdays' count; false when it cannot move (the stepper shakes). Back to every count equal to
+ * the weekdays', the line has none of its own. */
+export function stepRest(id: LineId, row: number, demand: Demand, by: number): boolean {
+  const wk = trainsShown(id);
+  if (!wk || (row !== 1 && row !== 2)) return false;
+  const all = [...restShown(id, 1)!, ...restShown(id, 2)!];
+  const i = (row - 1) * 3 + DEMAND_INDEX[demand], k = trainStep(id);
+  const to = Math.max(0, Math.min(wk[DEMAND_INDEX[demand]], all[i] + by * k));
+  if (to === all[i]) return false;
+  all[i] = to;
+  const same = all.every((n, j) => n === wk[j % 3]);
+  pendingRest.value = new Map(pendingRest.value).set(id, all);
+  void edit({ op: "lineRest", line: num(id), counts: same ? null : all }, false, true).finally(() => {
+    if (pendingRest.peek().get(id) !== all) return;
+    const m = new Map(pendingRest.peek());
+    m.delete(id);
+    pendingRest.value = m;
+  });
+  return true;
+}
+
 /** The most vehicles a count is raised to per level, when the track sets no lower limit (T-3152). */
 export const MAX_TYPED_VEHICLES = 1000;
 

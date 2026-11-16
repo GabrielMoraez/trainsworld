@@ -229,6 +229,9 @@ export interface LineStats {
   oneWay: boolean;
   /** T-2987: the player's speed limit for the line's trains, km/h; 0 for none */
   limit: number;
+  /** whole trains on weekend days and holidays, high, medium, low then holidays' (`ClockLine.rest`);
+   * absent: every day runs the weekdays' (`trainsNeeded`) */
+  rest?: number[];
   /** T-3333: the switch to run on both pairs of quad track is on: 1 it runs on both (the figures here
    * are its own pair's; its hidden twin, `twin`, runs the other, and its panel adds the two), 2 on one
    * pair for now */

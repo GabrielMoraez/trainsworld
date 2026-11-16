@@ -14,7 +14,7 @@ impl TrackApi {
         let Some((stops, path)) = edited_stops(&self.w.net, stops, false) else {
             return self.refuse(Issue::LinePath { line: id });
         };
-        self.run(Op::Line { id, data: Some(LineData { symbol: String::new(), trains: Some([high, medium, low]), auto: None, name, colour, tph: if stops.len() < 2 { [0.0; 3] } else { [6.0, 3.0, 1.0] }, stops, path, dwell_s, turnaround_s, cars, fast: false, bus: None, ferry: None, group: 0, group_name: String::new(), group_look: Default::default(), day: 0, hand: false, one_way: false, limit: 0, twin: Default::default() }) })
+        self.run(Op::Line { id, data: Some(LineData { symbol: String::new(), trains: Some([high, medium, low]), auto: None, name, colour, tph: if stops.len() < 2 { [0.0; 3] } else { [6.0, 3.0, 1.0] }, stops, path, dwell_s, turnaround_s, cars, fast: false, bus: None, ferry: None, group: 0, group_name: String::new(), group_look: Default::default(), day: 0, hand: false, one_way: false, limit: 0, twin: Default::default(), rest: None }) })
     }
     /// Change a line's stops, keeping everything else; the path is found again.
     pub fn set_stops(&mut self, id: u32, stops: &[u32]) -> u32 {
@@ -512,6 +512,37 @@ impl TrackApi {
             return self.run(Op::AutoTrains { id, auto: None, trains: Some([high, medium, low]) });
         }
         self.run(Op::TrainCounts { id, trains: Some([high, medium, low]), tph: d.tph })
+    }
+
+    /// A line's own trains on weekend days and holidays (`LineData::rest`): weekend high, medium, low,
+    /// then holidays', whole-line counts as `set_train_counts` takes them; empty when every day runs
+    /// the weekdays'.
+    pub fn line_rest(&self, id: u32) -> Vec<u32> {
+        let Some(c) = self.w.net.line_rest.get(id as usize).copied().flatten() else { return vec![] };
+        let k = if pairs_split(&self.w.net, id) { 2 } else { 1 };
+        c.iter().flatten().map(|&v| v * k).collect()
+    }
+    /// A line's trains an hour at level `lev` on kind of day `row` (0 weekdays, 1 weekend days, 2
+    /// holidays; `Network::line_tph_on`).
+    pub fn line_tph_on(&self, id: u32, row: u32, lev: u32) -> f32 {
+        if id as usize >= self.w.net.line_count() || lev as usize >= LEVELS { return 0.0 }
+        self.w.net.line_tph_on(id as usize, (row as usize).min(HOLIDAYS), lev as usize)
+    }
+    /// Set a line's trains on weekend days and holidays (six counts as `line_rest` gives them), each
+    /// kept to at most the weekdays' count of its level when it runs; no counts: every day runs the
+    /// weekdays'. One undoable edit.
+    pub fn set_line_rest(&mut self, id: u32, counts: &[u32]) -> u32 {
+        let Some(mut d) = self.w.net.line_data(id) else { return self.refuse(Issue::NoSuchLine { line: id }) };
+        d.rest = if counts.len() == 6 {
+            let split = pairs_split(&self.w.net, id);
+            Some(std::array::from_fn(|r| std::array::from_fn(|lev| { let v = counts[r * 3 + lev]; if split { v.div_ceil(2) } else { v } })))
+        } else {
+            None
+        };
+        if d.rest == self.w.net.line_rest.get(id as usize).copied().flatten() {
+            return 0;
+        }
+        self.run(Op::Line { id, data: Some(d) })
     }
 
     /// T-625: the line's counts follow a headway in seconds per level (0 = no service): the

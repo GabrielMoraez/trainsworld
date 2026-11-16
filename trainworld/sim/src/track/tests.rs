@@ -45,7 +45,7 @@ pub fn terminals_at_dead_ends(w: &mut TrackWorld) {
 pub fn line(w: &mut TrackWorld, stops: &[u32], tph: [f32; 3]) -> u32 {
     let path = w.net.route(stops).expect("no route");
     let id = w.net.alloc_line();
-    let d = LineData { symbol: String::new(), trains: None, auto: None, name: format!("L{id}"), colour: 0, stops: stops.to_vec(), path, tph, dwell_s: 30.0, turnaround_s: 180.0, cars: 0, fast: false, bus: None, ferry: None, group: 0, group_name: String::new(), group_look: Default::default(), day: 0, hand: false, one_way: false, limit: 0, twin: Default::default() };
+    let d = LineData { symbol: String::new(), trains: None, auto: None, name: format!("L{id}"), colour: 0, stops: stops.to_vec(), path, tph, dwell_s: 30.0, turnaround_s: 180.0, cars: 0, fast: false, bus: None, ferry: None, group: 0, group_name: String::new(), group_look: Default::default(), day: 0, hand: false, one_way: false, limit: 0, twin: Default::default(), rest: None };
     w.apply(Op::Line { id, data: Some(d) }).unwrap();
     id
 }
@@ -1256,7 +1256,8 @@ fn the_middle_of_a_long_line_changes_period_on_time() {
     }
 }
 
-/// T-2335: a Saturday and a Sunday run the same trains as a weekday, each level in its own hours.
+/// T-2335: a line with no trains of its own for them runs its weekday trains on a Saturday and a
+/// Sunday, each level in its own hours.
 #[test]
 fn weekends_run_the_weekday_timetable() {
     let (mut w, ns) = corridor(31);
@@ -1272,6 +1273,79 @@ fn weekends_run_the_weekday_timetable() {
         assert_eq!(d.len(), tue.len());
         assert!(d.iter().zip(&tue).all(|(a, b)| (a.0 - b.0).abs() < 1e-6 && a.1 == b.1), "a weekend's trains differ from a weekday's");
     }
+}
+
+/// A line's departures on local game day `day` (whole days), as (seconds into the day, level).
+fn deps_on(w: &TrackWorld, id: u32, r: usize, day: i64) -> Vec<(f64, usize)> {
+    let d0 = day as f64 * 86400.0;
+    deps_of(w, id, r, d0 - 86400.0, d0 + 2.0 * 86400.0).iter().filter(|t| t.dep >= d0 && t.dep < d0 + 86400.0).map(|t| (t.dep - d0, t.level as usize)).collect()
+}
+
+/// The same departures, to a microsecond (days apart differ in the last bits).
+fn same_deps(a: &[(f64, usize)], b: &[(f64, usize)]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| (x.0 - y.0).abs() < 1e-6 && x.1 == y.1)
+}
+
+/// Weekend and holiday trains (`LineData::rest`): each kind of day runs its own counts at the
+/// weekday's round trip, a change at midnight leaves no trains in pairs, a count above the weekday's
+/// runs the weekday's, an undo puts every day back on the weekdays', and a save keeps them.
+#[test]
+fn weekends_and_holidays_run_their_own_trains() {
+    let (mut w, ns) = corridor(31);
+    let id = line(&mut w, &ns, [12.0, 6.0, 3.0]);
+    set_counts(&mut w, id, [12, 6, 3]);
+    let (tue, fri, sat, sun) = (2i64, 5i64, 6i64, 7i64);
+    let trains = w.net.line_trains[id as usize].unwrap();
+    let before: Vec<_> = (0..2).map(|r| deps_on(&w, id, r, tue)).collect();
+    // weekends: half the high and medium trains, no night; holidays: a third of each
+    let half = |n: u32| n / 2;
+    let mut d = w.net.line_data(id).unwrap();
+    d.rest = Some([[half(trains[0]), half(trains[1]), 0], [trains[0] / 3, trains[1] / 3, trains[2] / 3]]);
+    w.apply(Op::Line { id, data: Some(d.clone()) }).unwrap();
+    let lat = w.svc.lattice(&w.net, id as usize).unwrap();
+    assert!(lat.rest_on);
+    for r in 0..2 {
+        assert!(same_deps(&deps_on(&w, id, r, tue), &before[r]), "run {r}: the weekday changed");
+        for day in [sat, sun] {
+            let dd = deps_on(&w, id, r, day);
+            // (the day before's evening leads into its midnight, T-835)
+            assert!(dd.iter().filter(|t| t.0 < 86400.0 - lat.lead - 1.0).all(|t| t.1 != LOW), "run {r} day {day}: a night train");
+            let peak: Vec<_> = dd.iter().filter(|t| t.0 >= 7.0 * 3600.0 && t.0 < 15.0 * 3600.0).collect();
+            assert!(peak.iter().all(|t| t.1 == HIGH), "run {r} day {day}");
+            let want = 8.0 * w.net.line_tph_on(id as usize, WEEKEND, HIGH) as f64;
+            assert!((peak.len() as f64 - want).abs() <= 1.0, "run {r} day {day}: {} high trains, want {want}", peak.len());
+        }
+        // no two departures closer than half a headway across Friday into the weekend
+        let all = deps_of(&w, id, r, fri as f64 * 86400.0, (sun + 2) as f64 * 86400.0);
+        for p in all.windows(2) {
+            assert!(p[1].dep - p[0].dep >= 0.5 * p[1].hw - 1e-6, "run {r}: {:?} then {:?}", p[0], p[1]);
+        }
+    }
+    assert!(w.net.line_tph_on(id as usize, WEEKEND, HIGH) < w.net.line_tph[id as usize][HIGH]);
+    // a holiday on its line's calendar: Tuesday runs the holidays' trains
+    let mut cal = vec![super::service::Cal::NONE; w.net.line_count()];
+    cal[id as usize] = super::service::Cal::from_days(&[(tue - 1, WEEKDAYS as u8), (tue, HOLIDAYS as u8)]);
+    w.svc.set_cal(cal);
+    let hol = deps_on(&w, id, 0, tue);
+    let want = 14.0 * w.net.line_tph_on(id as usize, HOLIDAYS, HIGH) as f64;
+    let high = hol.iter().filter(|t| t.1 == HIGH && t.0 >= 6.0 * 3600.0).count() as f64;
+    assert!((high - want).abs() <= 2.0, "{high} high trains on the holiday, want {want}");
+    w.svc.set_cal(vec![]);
+    // a count above the weekday's runs the weekday's
+    let mut more = d.clone();
+    more.rest = Some([[trains[0] * 3, trains[1], trains[2]]; 2]);
+    w.apply(Op::Line { id, data: Some(more) }).unwrap();
+    assert_eq!(w.net.line_tph_on(id as usize, WEEKEND, HIGH), w.net.line_tph[id as usize][HIGH]);
+    w.undo().unwrap().unwrap();
+    // a save keeps them; none writes nothing
+    let back = super::save::decode(&super::save::encode(&w.net)).unwrap();
+    assert_eq!(back.line_rest[id as usize], d.rest);
+    w.undo().unwrap().unwrap();
+    assert_eq!(w.net.line_rest[id as usize], None);
+    for day in [sat, sun] {
+        assert!(same_deps(&deps_on(&w, id, 0, day), &before[0]), "day {day}: the weekend after undo");
+    }
+    assert!(!super::save::encode(&w.net).windows(4).any(|x| x == b"LDT1"), "no weekend trains, saved");
 }
 
 #[test]

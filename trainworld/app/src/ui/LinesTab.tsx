@@ -14,6 +14,7 @@ import { listedLines, edit, pairStats, renameLine, stationsById } from "../game/
 import { closedGroups, groupName, lineGroups, toggleGroup } from "../game/lineGroups";
 import { byHand, handOrder, setHandOrder } from "../game/handOrder";
 import { GroupPill } from "./GroupPill";
+import { trainsNowAt } from "../game/lineRunning";
 import type { WorldView } from "../game/types";
 import { cityById } from "../game/cities";
 import { listWorld, scopedLists, stationZone } from "../game/listScope";
@@ -176,7 +177,8 @@ export function LinesTab() {
     try { await createLine(); } finally { setCreating(false); }
   };
   // a line that is not running has no train count and no riders: it sorts as zero
-  const trains = (id: string) => (w.lineStats[id]?.status === "running" ? pairStats(w, w.lineStats[id]).trainsNeeded[levOf(id)] : 0);
+  // its kind of day's trains (weekdays, weekend days, holidays)
+  const trains = (id: string) => (w.lineStats[id]?.status === "running" ? trainsNowAt(id, levOf(id)) : 0);
   // T-1813: while the player's hand order holds, no sort
   const hand = handOrder.value.lines;
   const key = hand.length ? null : lineSort.value.key, dir = lineSort.value.dir;
@@ -359,7 +361,7 @@ export function LinesTab() {
           <>
             <RidersToday l={l} />
             <MoneyToday l={l} st={st} />
-            <TrainsNow line={l.id} n={pairStats(w, st).trainsNeeded[levOf(l.id)]} period={periodOf(l)} at={periodAt(lineSeconds(st))} bus={!!st.bus} ferry={!!st.bus?.ferry} tram={!!st.tram} v={crowdOf(l)} lev={demandAt(lineSeconds(st))} stops={l.stops.length} flip={lineReversed(l, w, !!st.loop)} ends={endNames(l)} />
+            <TrainsNow line={l.id} n={trainsNowAt(l.id, levOf(l.id))} period={periodOf(l)} at={periodAt(lineSeconds(st))} bus={!!st.bus} ferry={!!st.bus?.ferry} tram={!!st.tram} v={crowdOf(l)} lev={demandAt(lineSeconds(st))} stops={l.stops.length} flip={lineReversed(l, w, !!st.loop)} ends={endNames(l)} />
           </>
         )}
         {key === "near" && <Near m={sc.lineDist.get(l.id)} />}

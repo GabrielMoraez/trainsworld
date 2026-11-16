@@ -153,6 +153,10 @@ export type EditOp =
   | { op: "setTrainCount"; line: number; trains: [number, number, number] }
   /** T-625: the line's trains follow a headway in seconds per level (0: no service), or null: counts by hand */
   | { op: "setHeadway"; line: number; seconds: [number, number, number] | null }
+  /** a line's trains on weekend days and holidays (`TrackApi.set_line_rest`): weekend high, medium,
+   * low, then holidays', whole-line counts, each at most the weekdays' of its level; null: every day
+   * runs the weekdays'. Undoable */
+  | { op: "lineRest"; line: number; counts: number[] | null }
   /** a field left out keeps the line's own as the worker has it now, so an edit never carries a stale
    * name, colour or symbol over one still on its way (T-1812); `letter` is the symbol set by hand, "" for none */
   | { op: "lineLook"; line: number; name?: string; colour?: string; letter?: string }
@@ -574,6 +578,9 @@ export interface ClockLine {
   oneWay: boolean;
   /** T-2987: the line's speed limit, km/h; 0 for none (`TrackApi::line_limit`) */
   limit: number;
+  /** the line's own trains on weekend days and holidays, high, medium, low then holidays'
+   * (`TrackApi::line_rest`); absent: every day runs the weekdays' */
+  rest?: number[];
   /** T-3333: the switch to run on both pairs of quad track is on: 1 it runs on both (its counts,
    * rates and headways are one pair's, its hidden twin runs the other), 2 on one pair for now
    * (`TrackApi::line_pairs`) */

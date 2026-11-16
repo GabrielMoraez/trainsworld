@@ -232,10 +232,68 @@ pub struct Lattice {
     pub lead: f64,
     pub shift: f64,
     pub phase: [f64; LEVELS],
+    /// Weekend days' and holidays' trains an hour, offsets and phases per level (`LineData::rest`),
+    /// as `tph`, `off` and `phase` are the weekdays'; `rest_on` false: every day runs the weekdays'.
+    pub rest_tph: [[f32; LEVELS]; 2],
+    pub rest_off: [[f64; LEVELS]; 2],
+    pub rest_phase: [[f64; LEVELS]; 2],
+    pub rest_on: bool,
+    /// The line's own calendar around now (holidays, its country's weekend): the kind of those days.
+    pub cal: Cal,
 }
 
 impl Lattice {
-    pub const NONE: Lattice = Lattice { tph: [0.0; LEVELS], off: [0.0; LEVELS], lead: 0.0, shift: 0.0, phase: [0.0; LEVELS] };
+    pub const NONE: Lattice = Lattice { tph: [0.0; LEVELS], off: [0.0; LEVELS], lead: 0.0, shift: 0.0, phase: [0.0; LEVELS], rest_tph: [[0.0; LEVELS]; 2], rest_off: [[0.0; LEVELS]; 2], rest_phase: [[0.0; LEVELS]; 2], rest_on: false, cal: Cal::NONE };
+    /// Each period's slot on local day `day`: its level (`PERIOD_LEVEL`) plus `LEVELS` times the
+    /// day's kind (weekdays, weekend days, holidays; always weekdays without `rest_on`).
+    pub fn levels_on(&self, day: i64) -> [usize; 5] {
+        let row = if self.rest_on { self.cal.row(day) } else { WEEKDAYS };
+        std::array::from_fn(|q| PERIOD_LEVEL[q] + LEVELS * row)
+    }
+    /// A slot's trains an hour, offset and phase (`levels_on`).
+    pub fn slot(&self, s: usize) -> (f32, f64, f64) {
+        let (row, lev) = (s / LEVELS, s % LEVELS);
+        if row == 0 { (self.tph[lev], self.off[lev], self.phase[lev]) } else { (self.rest_tph[row - 1][lev], self.rest_off[row - 1][lev], self.rest_phase[row - 1][lev]) }
+    }
+}
+
+/// Days of a line's own calendar kept around now (`Cal`): the clock worker sends from yesterday to
+/// eight days ahead.
+pub const CAL_DAYS: usize = 12;
+/// A row of `Cal::rows` that follows the week (`params::row_of_day`).
+pub const CAL_WEEK: u8 = u8::MAX;
+
+/// A line's own calendar (holidays, its country's weekend, weekend days worked): the kind of day of
+/// local days `day0 ..`, `CAL_WEEK` where the week decides; days outside follow the week. A plain
+/// value so a `Lattice` stays one, and departures stay a function of it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Cal {
+    pub day0: i64,
+    pub rows: [u8; CAL_DAYS],
+}
+
+impl Cal {
+    pub const NONE: Cal = Cal { day0: 0, rows: [CAL_WEEK; CAL_DAYS] };
+    /// The kind of local day `day` (`params::WEEKDAYS`, `WEEKEND`, `HOLIDAYS`).
+    pub fn row(&self, day: i64) -> usize {
+        let k = day - self.day0;
+        match (0..CAL_DAYS as i64).contains(&k).then(|| self.rows[k as usize]) {
+            Some(r) if (r as usize) < DAY_ROWS => r as usize,
+            _ => row_of_day(day),
+        }
+    }
+    /// From `(day, row)` pairs (any order; rows past `DAY_ROWS` ignored), the window from the first.
+    pub fn from_days(days: &[(i64, u8)]) -> Cal {
+        let Some(day0) = days.iter().map(|d| d.0).min() else { return Cal::NONE };
+        let mut c = Cal { day0, rows: [CAL_WEEK; CAL_DAYS] };
+        for &(d, r) in days {
+            let k = d - day0;
+            if (0..CAL_DAYS as i64).contains(&k) && (r as usize) < DAY_ROWS {
+                c.rows[k as usize] = r;
+            }
+        }
+        c
+    }
 }
 
 /// The most a period's departures lead its start (a run over four hours): half the shortest period,
@@ -278,7 +336,7 @@ fn day_order() -> [usize; 5] {
 /// The day's stretches of one level: runs of consecutive periods at the same level, as (first,
 /// last) period, in day order. Departures are laid out per stretch, so a level that spans several
 /// periods keeps one headway across their boundaries (T-1536).
-/// `levels`: each period's level (`PERIOD_LEVEL`).
+/// `levels`: each period's slot on that day (`Lattice::levels_on`).
 pub(crate) fn level_stretches(levels: &[usize; 5]) -> Vec<(usize, usize)> {
     let mut out: Vec<(usize, usize)> = vec![];
     for p in day_order() {
@@ -292,21 +350,22 @@ pub(crate) fn level_stretches(levels: &[usize; 5]) -> Vec<(usize, usize)> {
 
 /// A stretch (`level_stretches`) of `day` for run `r` of a pattern: (first departure, headway,
 /// departures), or None without service.
-fn stretch_points(lat: &Lattice, r: usize, day: i64, (first, last): (usize, usize), levels: &[usize; 5]) -> Option<(f64, f64, i64)> {
-    let lev = levels[first];
-    let tph = lat.tph[lev] as f64;
-    if tph <= 0.0 || (r == 1 && lat.off[lev].is_infinite()) {
+/// `next`: the levels of the day after, for a stretch that ends at midnight.
+fn stretch_points(lat: &Lattice, r: usize, day: i64, (first, last): (usize, usize), levels: &[usize; 5], next: &[usize; 5]) -> Option<(f64, f64, i64)> {
+    let (tph, off, phase) = lat.slot(levels[first]);
+    let tph = tph as f64;
+    if tph <= 0.0 || (r == 1 && off.is_infinite()) {
         return None;
     }
     let hw = 3600.0 / tph;
     let (h0, h1) = (PERIOD_HOURS[first].0, PERIOD_HOURS[last].1);
     // a period followed by no service runs to its own end, so a line's last trains of the evening
     // or of a peak are not pulled early (T-835)
-    // (the day's own levels: a stretch ending at midnight is followed by low on any kind of day)
-    let next = PERIOD_HOURS.iter().position(|&(a, _)| a == h1 % 24.0).map_or(0.0, |q| lat.tph[levels[q]]);
+    // (a stretch ending at midnight is followed by the next day's night, whose row may differ)
+    let next = PERIOD_HOURS.iter().position(|&(a, _)| a == h1 % 24.0).map_or(0.0, |q| lat.slot(if h1 >= 24.0 { next[q] } else { levels[q] }).0 as f64);
     let end_lead = if next > 0.0 { lat.lead } else { 0.0 };
     let (start, end) = (day as f64 * DAY_S + h0 * 3600.0 - lat.lead, day as f64 * DAY_S + h1 * 3600.0 - end_lead);
-    let ps = start + lat.phase[lev] + if r == 1 { lat.off[lev] } else { 0.0 };
+    let ps = start + phase + if r == 1 { off } else { 0.0 };
     // the points ps + k hw before the period's end
     let mut n = ((end - ps) / hw).ceil() as i64;
     while n > 0 && ps + (n - 1) as f64 * hw >= end {
@@ -351,20 +410,23 @@ pub(crate) fn lattice_deps_local(lat: &Lattice, r: usize, a: f64, b: f64, out: &
     }
     let d0 = (a / DAY_S).floor() as i64;
     let d1 = (b / DAY_S).floor() as i64;
-    let levels = &PERIOD_LEVEL;
-    let stretches = level_stretches(levels);
     // the last departure before day d0: the day before's last stretch with service
     let mut last: Option<f64> = None;
-    for &s in stretches.iter().rev() {
-        if let Some((ps, hw, n)) = stretch_points(lat, r, d0 - 1, s, levels) {
-            last = Some(ps + (n - 1) as f64 * hw);
-            break;
+    {
+        let (levels, next) = (lat.levels_on(d0 - 1), lat.levels_on(d0));
+        for &s in level_stretches(&levels).iter().rev() {
+            if let Some((ps, hw, n)) = stretch_points(lat, r, d0 - 1, s, &levels, &next) {
+                last = Some(ps + (n - 1) as f64 * hw);
+                break;
+            }
         }
     }
     // the next day's first stretch starts `lead` before it
     for day in d0..=d1 + 1 {
-        for &s in &stretches {
-            let Some((ps, hw, n)) = stretch_points(lat, r, day, s, levels) else { continue };
+        // each day its own kind's trains (weekday, weekend day, holiday)
+        let (levels, next) = (lat.levels_on(day), lat.levels_on(day + 1));
+        for &s in &level_stretches(&levels) {
+            let Some((ps, hw, n)) = stretch_points(lat, r, day, s, &levels, &next) else { continue };
             let mut k0 = 0i64;
             if let Some(l) = last {
                 while k0 < n && ps + k0 as f64 * hw - l < MIN_GAP_SHARE * hw {
@@ -374,7 +436,7 @@ pub(crate) fn lattice_deps_local(lat: &Lattice, r: usize, a: f64, b: f64, out: &
             if k0 >= n {
                 continue;
             }
-            let lev = levels[s.0] as u8;
+            let lev = (levels[s.0] % LEVELS) as u8;
             let mut k = k0.max(((a - ps) / hw).floor() as i64 - 1).max(k0);
             while k < n {
                 let d = ps + k as f64 * hw;
@@ -420,6 +482,9 @@ pub struct Service {
     /// them all (a world just made or reloaded).
     changed: Vec<u32>,
     pub changed_all: bool,
+    /// Per line id, its own calendar (`Cal`): the kind of day of its holidays and its country's
+    /// weekend. Not saved; the clock worker sends it (`TrackApi::set_line_rows`).
+    pub cal: Vec<Cal>,
 }
 
 fn build_run(net: &Network, l: u32, rev: bool, train_len: f64, dwell: f64) -> Option<Run> {
@@ -976,8 +1041,8 @@ impl Service {
         let tph = net.line_tph[l];
         // The reverse departure follows the forward trip's turnaround, so an odd whole-line fleet
         // stays evenly spaced around the complete circuit.
-        let off = std::array::from_fn(|lev| {
-            let t = tph[lev] as f64;
+        let off_of = |lev: usize, t: f32| {
+            let t = t as f64;
             if ls.one_way {
                 return f64::INFINITY;
             }
@@ -988,13 +1053,22 @@ impl Service {
             // T-2607, T-2972: a headway line's trains wait out the time its round trip leaves them,
             // the share the spacing chose at its last stop, the rest at its first
             (there + net.line_split_of(l as u32)[lev] as f64 * self.spare(net, l, lev)) % h
-        });
+        };
+        let off = std::array::from_fn(|lev| off_of(lev, tph[lev]));
         // a loop's middle is half a lap from its first stop (T-798): the same figure
         let lead = (0.25 * (ls.runs[0].prof[1].duration + ls.runs[1].prof[1].duration)).clamp(0.0, LEAD_MAX_S);
         // T-1925: under a headway, whatever the headway has become since it was placed
         let p = net.line_phase_of(l as u32);
-        let phase = std::array::from_fn(|lev| if tph[lev] > 0.0 { (p[lev] as f64).rem_euclid(3600.0 / tph[lev] as f64) } else { 0.0 });
-        Some(Lattice { tph, off, lead, shift: ls.shift, phase })
+        let phase_of = |lev: usize, t: f32| if t > 0.0 { (p[lev] as f64).rem_euclid(3600.0 / t as f64) } else { 0.0 };
+        let phase = std::array::from_fn(|lev| phase_of(lev, tph[lev]));
+        // weekend days and holidays: their counts over the weekday's at the weekday's round trip,
+        // which those counts (at most the weekday's) can only shorten
+        let rest = net.line_rest.get(l).copied().flatten();
+        let rest_tph: [[f32; LEVELS]; 2] = std::array::from_fn(|k| std::array::from_fn(|lev| net.line_tph_on(l, k + 1, lev)));
+        let rest_off = rest_tph.map(|row| std::array::from_fn(|lev| off_of(lev, row[lev])));
+        let rest_phase = rest_tph.map(|row| std::array::from_fn(|lev| phase_of(lev, row[lev])));
+        let cal = self.cal.get(l).copied().unwrap_or(Cal::NONE);
+        Some(Lattice { tph, off, lead, shift: ls.shift, phase, rest_tph, rest_off, rest_phase, rest_on: rest.is_some(), cal })
     }
 
     /// Every line's local time again, after the time zone table changed (T-309).
@@ -1185,7 +1259,10 @@ impl Service {
                 for _ in 0..num!(u32) {
                     drawn.push((num!(u8), num!(f64)));
                 }
-                v.push(Era { until, lat: Lattice { tph, off, lead, shift, phase }, drawn });
+                // weekend and holiday trains are not in the era bytes: an old pattern loads running
+                // its weekday trains every day
+                let cal = self.cal.get(l).copied().unwrap_or(Cal::NONE);
+                v.push(Era { until, lat: Lattice { tph, off, lead, shift, phase, rest_tph: [tph; 2], rest_off: [off; 2], rest_phase: [phase; 2], rest_on: false, cal }, drawn });
             }
             let mut s = vec![];
             for _ in 0..num!(u32) {
@@ -1199,6 +1276,26 @@ impl Service {
         self.eras = eras;
         self.shifts = shifts;
         Ok(())
+    }
+
+    /// Each line's own calendar (`Cal`), by line id, from the clock worker (`TrackApi::set_line_rows`).
+    /// A line whose rows changed on any day is noted as changed (`note_changed`); a window that only
+    /// moved on is not.
+    pub fn set_cal(&mut self, cal: Vec<Cal>) {
+        let n = self.cal.len().max(cal.len());
+        let at = |c: &[Cal], l: usize| c.get(l).copied().unwrap_or(Cal::NONE);
+        let changed: Vec<u32> = (0..n)
+            .filter(|&l| {
+                let (a, b) = (at(&self.cal, l), at(&cal, l));
+                let lo = a.day0.min(b.day0);
+                a != b && (lo..lo.max(a.day0.max(b.day0)) + CAL_DAYS as i64).any(|d| a.row(d) != b.row(d))
+            })
+            .map(|l| l as u32)
+            .collect();
+        self.cal = cal;
+        if !changed.is_empty() {
+            self.note_changed(&changed);
+        }
     }
 
     /// A line's eras (empty for most).

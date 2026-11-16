@@ -455,6 +455,20 @@ pub const LEVELS: usize = 3;
 /// demand solves each period on its own level's trains.
 pub const PERIOD_HOURS: [(f64, f64); 5] = [(6.0, 10.0), (10.0, 16.0), (16.0, 20.0), (20.0, 24.0), (0.0, 6.0)];
 pub const PERIOD_LEVEL: [usize; 5] = [HIGH, HIGH, HIGH, MEDIUM, LOW];
+/// The kinds of day a line sets its trains for (`LineData::rest`): weekdays, weekend days, holidays
+/// (a public holiday, and a superholiday's day away and coming-back day).
+pub const WEEKDAYS: usize = 0;
+pub const WEEKEND: usize = 1;
+pub const HOLIDAYS: usize = 2;
+pub const DAY_ROWS: usize = 3;
+/// A local game day's kind of day by the week alone: a weekend day (`day_kind_at` 1 or 2) or a
+/// weekday. A line's own calendar (holidays, its country's weekend) overrides it (`service::Cal`).
+pub fn row_of_day(day: i64) -> usize {
+    match (day - 1).rem_euclid(7) {
+        5 | 6 => WEEKEND,
+        _ => WEEKDAYS,
+    }
+}
 /// Each period's busiest hour against its mean hour (T-087): how riders arrive over it (the
 /// boarding account's shape, demand's crowding).
 pub const PEAK_HOUR_FACTOR: [f32; 5] = [1.4, 1.15, 1.4, 1.3, 1.5];

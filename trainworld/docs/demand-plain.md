@@ -68,8 +68,9 @@ station buildings and T-2278's parking by income). The full rules are in demand.
   Sunday is a weekend day. A public holiday, with the substitute days its country gives, runs as a
   Sunday, so Thanksgiving runs a New York line on Sunday demand and fares that day only; a few US
   holidays most people work through (Columbus Day, Veterans Day and the like) run as weekdays.
-  Every day runs the same trains: each line's high, medium and low trains in their own hours,
-  weekends and holidays too, and their crowding is the day's riders on those trains.
+  Each line sets its high, medium and low trains for weekdays, weekend days and holidays, each in its
+  own hours; a weekend or holiday count is at most the weekday one, and a day's crowding is its
+  riders on that day's trains.
 - **Long holidays.** Spring Festival, Golden Week, Obon, Chuseok, Thanksgiving, Christmas, Eid and
   a few more make a run of days off around them a superholiday (3 days or more). While people are
   away, local outings are 0.7 of a Sunday's (many have gone home) and attractions 1.5 times a
