@@ -232,6 +232,8 @@ export interface LineStats {
   /** whole trains on weekend days and holidays, high, medium, low then holidays' (`ClockLine.rest`);
    * absent: every day runs the weekdays' (`trainsNeeded`) */
   rest?: number[];
+  /** trains an hour on weekend days then holidays, high, medium, low (`ClockLine.restTph`) */
+  restTph?: number[];
   /** T-3333: the switch to run on both pairs of quad track is on: 1 it runs on both (the figures here
    * are its own pair's; its hidden twin, `twin`, runs the other, and its panel adds the two), 2 on one
    * pair for now */

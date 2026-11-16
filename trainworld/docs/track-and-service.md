@@ -1123,18 +1123,27 @@ line panel's round-trip split, waiting at busy track among it: [ui-inspectors.md
   High runs 6-20 (the morning peak, midday and evening peak), medium 20-24, low 0-6
   (`PERIOD_LEVEL`; Anita, 2026-10-27, T-1536) on every kind of day. **Weekend and holiday trains**
   (`LineData::rest`, `Network::line_rest`): a line may set its own count per level for weekend days
-  and for holidays, each at most its weekday count of that level, so the track the weekday trains
-  were checked against always holds them; with none every day runs the weekday counts, until the
+  and for holidays, more or fewer than its weekday count of that level; with none every day runs the
+  weekday counts, until the
   player changes the weekday counts: those of the day before are then kept as the line's weekend and
   holiday counts (`pin_rest` in `wasm/lines.rs`), so a weekday edit leaves the other days as they ran.
-  Counts equal to the weekday ones run the weekday pattern (`Lattice::rest_on` off). A
+  All lines run at once on those days too, so where any line's weekend (or holiday) counts differ
+  from its weekday ones, that kind of day is settled on its own after the weekdays'
+  (`TrackWorld::settle_counts` runs `settle_day` with that day's counts in `line_trains`): the same
+  solve, capacity fill and held trains as a weekday, every line in it, the rates kept in
+  `Network::line_tph_rest` (`rest_solved`). That is up to three settles an edit, only while some line
+  uses it; the service, round trips and capacity the rest of the game reads are then put back on the
+  weekdays'. Weekend and holiday departures run their rates at the weekday round trip. Rates equal
+  to the weekday ones run the weekday pattern (`Lattice::rest_on` off). The fleet a line needs is
+  its most trains on any kind of day at any level (`cars_needed`), so more weekend trains are
+  bought. A
   day's kind is the week's (`params::row_of_day`: Saturday and Sunday the weekend) unless the line's
   calendar says otherwise (`service::Cal`, 12 local days the clock worker sends,
   `TrackApi::set_line_rows`, from `rowOfIn` in `game/holidayCalendar.ts`): public holidays and a
   superholiday's days away and back are holidays, a country's own weekend its weekend, the weekend
-  days it works weekdays. Those days run `Network::line_tph_on`: the weekday rate times the count over
-  the weekday count, at the weekday round trip. A change is an undoable line edit
-  (`TrackApi::set_line_rest`), saved in a trailing `LDT1` block ([demand-timing.md](demand-timing.md)
+  days it works weekdays; `Network::line_tph_on` gives each kind of day's rate. A change is an undoable
+  line edit (`TrackApi::set_line_rest`), saved in a trailing `LDT1` block with the settled weekend and
+  holiday rates to the bit ([demand-timing.md](demand-timing.md)
   "Kinds of day"). New rail lines start at 0 / 0 / 0 and each level is
   set on its own, so a line given trains at high alone stops at 20:00 (T-2123; the tutorial's last
   steps ask for trains at every level); bus lines start with buses at every level; zero means no new departures. The panel shows the integer allocation and resulting headway.

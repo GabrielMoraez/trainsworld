@@ -1288,7 +1288,8 @@ fn same_deps(a: &[(f64, usize)], b: &[(f64, usize)]) -> bool {
 
 /// Weekend and holiday trains (`LineData::rest`): each kind of day runs its own counts at the
 /// weekday's round trip, a change at midnight leaves no trains in pairs, a count above the weekday's
-/// runs the weekday's, an undo puts every day back on the weekdays', and a save keeps them.
+/// runs more trains than the weekdays (settled on its own, the weekdays' left as they were), an
+/// undo puts every day back on the weekdays', and a save keeps the counts and their rates.
 #[test]
 fn weekends_and_holidays_run_their_own_trains() {
     let (mut w, ns) = corridor(31);
@@ -1331,11 +1332,22 @@ fn weekends_and_holidays_run_their_own_trains() {
     let high = hol.iter().filter(|t| t.1 == HIGH && t.0 >= 6.0 * 3600.0).count() as f64;
     assert!((high - want).abs() <= 2.0, "{high} high trains on the holiday, want {want}");
     w.svc.set_cal(vec![]);
-    // a count above the weekday's runs the weekday's
+    // a count above the weekday's runs more trains, and the weekdays' stay as they were
+    let week = w.net.line_tph[id as usize];
     let mut more = d.clone();
-    more.rest = Some([[trains[0] * 3, trains[1], trains[2]]; 2]);
+    more.rest = Some([[trains[0] * 2, trains[1], trains[2]]; 2]);
     w.apply(Op::Line { id, data: Some(more) }).unwrap();
-    assert_eq!(w.net.line_tph_on(id as usize, WEEKEND, HIGH), w.net.line_tph[id as usize][HIGH]);
+    assert_eq!(w.net.line_tph[id as usize], week, "the weekdays' rates");
+    let busy = w.net.line_tph_on(id as usize, WEEKEND, HIGH);
+    assert!(busy > 1.5 * week[HIGH], "{busy} trains an hour on a weekend, {} on a weekday", week[HIGH]);
+    for r in 0..2 {
+        assert!(same_deps(&deps_on(&w, id, r, tue), &before[r]), "run {r}: the weekday changed");
+        let peak = deps_on(&w, id, r, sat).iter().filter(|t| t.1 == HIGH && t.0 >= 7.0 * 3600.0 && t.0 < 15.0 * 3600.0).count() as f64;
+        assert!((peak - 8.0 * busy as f64).abs() <= 1.0, "run {r}: {peak} high trains on Saturday");
+    }
+    let back = super::save::decode(&super::save::encode(&w.net)).unwrap();
+    assert_eq!(back.rest_solved, [true, true]);
+    assert_eq!(back.line_tph_rest[id as usize], w.net.line_tph_rest[id as usize], "the rates, to the bit");
     w.undo().unwrap().unwrap();
     // a save keeps them; none writes nothing
     let back = super::save::decode(&super::save::encode(&w.net)).unwrap();
@@ -1346,6 +1358,26 @@ fn weekends_and_holidays_run_their_own_trains() {
         assert!(same_deps(&deps_on(&w, id, 0, day), &before[0]), "day {day}: the weekend after undo");
     }
     assert!(!super::save::encode(&w.net).windows(4).any(|x| x == b"LDT1"), "no weekend trains, saved");
+}
+
+/// A weekend count settles as the same count would on a weekday: the track it shares holds no
+/// more trains on a weekend than on a weekday, so a count past what it lets run waits at the ends.
+#[test]
+fn a_weekend_count_settles_as_a_weekday_one() {
+    for busy in [24, 400] {
+        let (mut wk, ns) = corridor(31);
+        let a = line(&mut wk, &ns, [12.0, 6.0, 3.0]);
+        set_counts(&mut wk, a, [busy, 6, 3]);
+        let (mut we, ns) = corridor(31);
+        let b = line(&mut we, &ns, [12.0, 6.0, 3.0]);
+        set_counts(&mut we, b, [12, 6, 3]);
+        let mut d = we.net.line_data(b).unwrap();
+        d.rest = Some([[busy, 6, 3], [12, 6, 3]]);
+        we.apply(Op::Line { id: b, data: Some(d) }).unwrap();
+        let (on_weekday, on_weekend) = (wk.net.line_tph[a as usize][HIGH], we.net.line_tph_on(b as usize, WEEKEND, HIGH));
+        assert!((on_weekday - on_weekend).abs() <= 1e-3 * on_weekday, "{busy} trains: {on_weekday} an hour on a weekday, {on_weekend} on a weekend");
+        assert_eq!(we.net.rest_solved, [true, false], "holidays run the weekdays' counts, unsettled");
+    }
 }
 
 #[test]

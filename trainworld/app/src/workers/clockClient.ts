@@ -311,6 +311,7 @@ function toWorld(s: ClockState): WorldView {
       oneWay: l.oneWay,
       limit: l.limit,
       ...(l.rest ? { rest: l.rest } : {}),
+      ...(l.restTph ? { restTph: l.restTph } : {}),
       ...(l.pairs ? { pairs: l.pairs } : {}),
       ...(l.twinOf !== undefined ? { twinOf: String(l.twinOf) } : {}),
       ...(l.bus ? { bus: l.bus } : {}),

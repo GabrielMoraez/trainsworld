@@ -232,7 +232,9 @@ fn cars_needed(w: &TrackWorld) -> [u32; FLEETS] {
     let mut out = [0; FLEETS];
     for (i, l) in w.svc.lines.iter().enumerate() {
         if l.running {
-            out[fleet_kind(&w.net, i)] += l.trains.iter().copied().max().unwrap_or(0) * l.cars;
+            // a train runs on whichever kind of day needs the most at any level
+            let rest = w.net.line_rest.get(i).copied().flatten().map_or(0, |r| r.iter().flatten().copied().max().unwrap_or(0));
+            out[fleet_kind(&w.net, i)] += l.trains.iter().copied().max().unwrap_or(0).max(rest) * l.cars;
         }
     }
     out

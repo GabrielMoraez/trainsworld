@@ -267,8 +267,8 @@ pub struct LineData {
     /// the other pair for one (`Of`).
     pub twin: super::twin::Twin,
     /// Whole trains at high, medium and low demand on weekend days and on holidays (`params::WEEKEND`,
-    /// `HOLIDAYS`, less one), each at most the weekday's count of its level (`trains`); None: every
-    /// kind of day runs the weekdays'. Saved in `LDT1`.
+    /// `HOLIDAYS`, less one), more or fewer than the weekdays' (`trains`); None: every kind of day
+    /// runs the weekdays'. Saved in `LDT1`.
     pub rest: Option<[[u32; 3]; 2]>,
 }
 
@@ -511,6 +511,15 @@ pub struct Network {
     pub line_limit: Vec<u16>,
     /// Each line's weekend and holiday counts (`LineData::rest`).
     pub line_rest: Vec<Option<[[u32; 3]; 2]>>,
+    /// Each line's settled rates on weekend days and on holidays, as `line_tph` on weekdays
+    /// (`TrackWorld::settle_counts`): every line's, since a line running its weekday trains then
+    /// still shares the track with lines that do not. Read only where `rest_solved` says so.
+    pub line_tph_rest: Vec<[[f32; 3]; 2]>,
+    /// Whether weekend days (0) and holidays (1) were settled on their own: some line runs counts
+    /// of its own on them. Otherwise every line runs its weekday rates then, at no settle's cost.
+    pub rest_solved: [bool; 2],
+    /// `settle_kept` of the weekend and holiday settles.
+    pub settle_kept_rest: [Vec<(u32, usize, u32, u64, u32)>; 2],
     /// T-3333: `LineData::twin`.
     pub line_twin: Vec<super::twin::Twin>,
     pub line_name: Vec<String>,
@@ -731,19 +740,20 @@ impl Network {
     }
 
     /// A line's trains an hour at level `lev` on kind of day `row` (`params::WEEKDAYS`, `WEEKEND`,
-    /// `HOLIDAYS`): the weekdays' `line_tph`, or on a weekend day or holiday its own count
-    /// (`LineData::rest`, at most the weekdays') over the weekdays' at the weekdays' round trip, which
-    /// fewer trains can only shorten.
+    /// `HOLIDAYS`): the weekdays' `line_tph`, or the rate settled for that kind of day
+    /// (`line_tph_rest`) when one was.
     pub fn line_tph_on(&self, l: usize, row: usize, lev: usize) -> f32 {
-        let tph = self.line_tph.get(l).map_or(0.0, |t| t[lev]);
-        let rest = self.line_rest.get(l).copied().flatten();
-        match (row, rest) {
-            (WEEKEND | HOLIDAYS, Some(c)) => {
-                let n = self.line_trains.get(l).copied().flatten().map_or(0, |t| t[lev]);
-                if n > 0 { tph * c[row - 1][lev].min(n) as f32 / n as f32 } else { 0.0 }
-            }
-            _ => tph,
+        match row {
+            WEEKEND | HOLIDAYS if self.rest_solved[row - 1] => self.line_tph_rest.get(l).map_or(0.0, |t| t[row - 1][lev]),
+            _ => self.line_tph.get(l).map_or(0.0, |t| t[lev]),
         }
+    }
+
+    /// A line's own counts on weekend days (`k` 0) or holidays (1) where they differ from its
+    /// weekday counts; None where it runs those.
+    pub fn rest_counts(&self, l: usize, k: usize) -> Option<[u32; 3]> {
+        let c = self.line_rest.get(l).copied().flatten()?[k];
+        (self.line_trains.get(l).copied().flatten() != Some(c)).then_some(c)
     }
     /// T-1925: a line's departure phase per level, seconds (`line_phase`; 0 where none is set).
     pub fn line_phase_of(&self, l: u32) -> [f32; 3] {
@@ -870,6 +880,9 @@ impl Network {
             line_one_way: vec![],
             line_limit: vec![],
             line_rest: vec![],
+            line_tph_rest: vec![],
+            rest_solved: [false; 2],
+            settle_kept_rest: [vec![], vec![]],
             line_twin: vec![],
             line_name: vec![],
             line_symbol: vec![],
@@ -1110,6 +1123,7 @@ impl Network {
         self.line_stops.push(Span::default());
         self.line_path.push(Span::default());
         self.line_tph.push([0.0; 3]);
+        self.line_tph_rest.push([[0.0; 3]; 2]);
         self.line_trains.push(None);
         self.line_auto.push(None);
         self.line_dwell.push(DEFAULT_DWELL_S);

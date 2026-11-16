@@ -400,7 +400,57 @@ impl TrackWorld {
         trimmed
     }
 
+    /// The weekdays' settle (`settle_day`), then weekend days' and holidays' where some line runs
+    /// counts of its own on them: all lines run at once on those days too, so each kind of day's
+    /// rates come from a settle of their own over the same track, with that day's counts in
+    /// `line_trains` (`line_tph_rest`). The service is left on the weekdays' rates, which the round
+    /// trips, holds and capacity the rest of the game reads are worked out from.
     fn settle_counts(&mut self, full: bool) -> Vec<u32> {
+        let mut affected = self.settle_day(full);
+        let n = self.net.line_count();
+        let before = (self.net.line_tph_rest.clone(), self.net.rest_solved);
+        let mut swapped = false;
+        for k in 0..2 {
+            let own: Vec<(usize, [u32; 3])> = (0..n).filter_map(|l| self.net.rest_counts(l, k).map(|c| (l, c))).collect();
+            self.net.rest_solved[k] = !own.is_empty();
+            if own.is_empty() {
+                self.net.settle_kept_rest[k].clear();
+                continue;
+            }
+            swapped = true;
+            let week_trains = self.net.line_trains.clone();
+            let week_tph = self.net.line_tph.clone();
+            let week_kept = std::mem::replace(&mut self.net.settle_kept, std::mem::take(&mut self.net.settle_kept_rest[k]));
+            // a settle steps from where the last one left that day's rates, at first from the
+            // weekdays', as a weekday count change steps from the old rates: a start already at its
+            // fleet's rate would be taken as settled and never meet the track's capacity (`cap.fill`)
+            if before.1[k] {
+                for l in 0..n { self.net.line_tph[l] = self.net.line_tph_rest[l][k]; }
+            }
+            for &(l, c) in &own { self.net.line_trains[l] = Some(c); }
+            affected.extend(self.settle_day(full));
+            for l in 0..n { self.net.line_tph_rest[l][k] = self.net.line_tph[l]; }
+            // a loop's counts were made even (as its weekday counts are), which the line keeps
+            for &(l, _) in &own {
+                if let (Some(rest), Some(c)) = (self.net.line_rest[l].as_mut(), self.net.line_trains[l]) { rest[k] = c; }
+            }
+            self.net.settle_kept_rest[k] = std::mem::replace(&mut self.net.settle_kept, week_kept);
+            self.net.line_trains = week_trains;
+            self.net.line_tph = week_tph;
+        }
+        let ids: Vec<u32> = (0..n as u32).filter(|&l| self.net.line_ok(l) && self.net.line_trains[l as usize].is_some() && self.svc.lines[l as usize].ok).collect();
+        if swapped {
+            let d = self.svc.update_scoped(&self.net, &[], &ids, true, Some((&[], &[])));
+            affected.extend(d.recomputed);
+            for &id in &ids { self.svc.lines[id as usize].trains = self.net.line_trains[id as usize].unwrap(); }
+        }
+        let on = |l: usize, k: usize, t: &[[[f32; 3]; 2]], s: [bool; 2]| if s[k] { t.get(l).map(|x| x[k]) } else { self.net.line_tph.get(l).copied() };
+        affected.extend(ids.iter().copied().filter(|&l| (0..2).any(|k| on(l as usize, k, &before.0, before.1) != on(l as usize, k, &self.net.line_tph_rest, self.net.rest_solved))));
+        affected.sort_unstable(); affected.dedup(); affected
+    }
+
+    /// One kind of day's settle, on the counts in `line_trains` (`settle_counts`).
+    fn settle_day(&mut self, full: bool) -> Vec<u32> {
         self.net.rates_settled = true;
         let ids: Vec<u32> = (0..self.net.line_count() as u32)
             .filter(|&l| self.net.line_ok(l) && self.net.line_trains[l as usize].is_some() && self.svc.lines[l as usize].ok).collect();

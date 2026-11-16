@@ -581,6 +581,9 @@ export interface ClockLine {
   /** the line's own trains on weekend days and holidays, high, medium, low then holidays'
    * (`TrackApi::line_rest`); absent: every day runs the weekdays' */
   rest?: number[];
+  /** the line's trains an hour on weekend days then holidays, high, medium, low, as settled for them
+   * (`TrackApi::line_tph_rest`) */
+  restTph?: number[];
   /** T-3333: the switch to run on both pairs of quad track is on: 1 it runs on both (its counts,
    * rates and headways are one pair's, its hidden twin runs the other), 2 on one pair for now
    * (`TrackApi::line_pairs`) */

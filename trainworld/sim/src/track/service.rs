@@ -1060,16 +1060,15 @@ impl Service {
         let p = net.line_phase_of(l as u32);
         let phase_of = |lev: usize, t: f32| if t > 0.0 { (p[lev] as f64).rem_euclid(3600.0 / t as f64) } else { 0.0 };
         let phase = std::array::from_fn(|lev| phase_of(lev, tph[lev]));
-        // weekend days and holidays: their counts over the weekday's at the weekday's round trip,
-        // which those counts (at most the weekday's) can only shorten
-        let rest = net.line_rest.get(l).copied().flatten();
+        // weekend days and holidays at their own settled rates, which a line running its weekday
+        // counts then has too where others' counts change what the shared track lets it run
         let rest_tph: [[f32; LEVELS]; 2] = std::array::from_fn(|k| std::array::from_fn(|lev| net.line_tph_on(l, k + 1, lev)));
         let rest_off = rest_tph.map(|row| std::array::from_fn(|lev| off_of(lev, row[lev])));
         let rest_phase = rest_tph.map(|row| std::array::from_fn(|lev| phase_of(lev, row[lev])));
         let cal = self.cal.get(l).copied().unwrap_or(Cal::NONE);
-        // counts equal to the weekdays' run the weekdays' pattern, so they keep `rest_on` off and the
-        // lattice equal to one read back from a save, which has no weekend or holiday rates
-        let rest_on = rest.is_some() && (rest_tph != [tph; 2] || rest_off != [off; 2] || rest_phase != [phase; 2]);
+        // rates equal to the weekdays' run the weekdays' pattern, so they keep `rest_on` off and the
+        // lattice equal to one read back from a save, whose eras keep no weekend or holiday rates
+        let rest_on = rest_tph != [tph; 2] || rest_off != [off; 2] || rest_phase != [phase; 2];
         Some(Lattice { tph, off, lead, shift: ls.shift, phase, rest_tph, rest_off, rest_phase, rest_on, cal })
     }
 

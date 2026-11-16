@@ -69,7 +69,7 @@ function stockOf(m: MoneyState, st: LineStats, v: Vehicle): { unit: (n: number) 
 /** What a stepper's button leads to: the vehicle count, and for a running line what it needs beyond
  * its busiest level, bought unless the depot has spare ones, or what it frees, which stays owned for
  * any line to use. */
-function changeTip(counts: [number, number, number], lev: number, to: number, st: LineStats): string {
+function changeTip(counts: readonly number[], lev: number, to: number, st: LineStats): string {
   const v = vehicleOf(st);
   const head = vehiclesText(v, to);
   const m = moneyState.value;
@@ -114,6 +114,9 @@ function LevelCells({ l, st, d, auto, limits }: { l: LineInput; st: LineStats; d
     ? st.trainsNeeded.map((n, i) => (autoPending![i] ? autoTrainsFor(st.roundTripByLevel[i], auto[i], limits[i]?.s ?? 0, loop) : n))
     : (trainsShown(l.id) ?? st.trainsNeeded)) as [number, number, number];
   const countPending = !auto && counts[lev] !== st.trainsNeeded[lev];
+  // the fleet is the most trains of any kind of day, so a weekday change buys or frees only past the
+  // weekend's and holidays' (which a weekday change leaves as they are)
+  const fleetCounts = [...counts, ...(restShown(l.id, 1) ?? []), ...(restShown(l.id, 2) ?? [])];
   const r = refusedForCash.value;
   const refused = r && r.id === l.id && r.levs[lev] ? r : null;
   const broke = refused !== null && liveMoney.value.cash < refused.need;
@@ -144,8 +147,8 @@ function LevelCells({ l, st, d, auto, limits }: { l: LineInput; st: LineStats; d
               if (to < now) { setTrainCount(l.id, d, to); return; }
               return !full && setTrainCount(l.id, d, Math.min(to, cap)) && to <= cap ? undefined : false;
             } }}
-            tipDown={changeTip(counts, lev, Math.max(0, counts[lev] - k), st)}
-            tipUp={full && limit !== null && cap < MAX_TYPED_VEHICLES ? limitText(limit, v) : changeTip(counts, lev, counts[lev] + k, st)} />)}
+            tipDown={changeTip(fleetCounts, lev, Math.max(0, counts[lev] - k), st)}
+            tipUp={full && limit !== null && cap < MAX_TYPED_VEHICLES ? limitText(limit, v) : changeTip(fleetCounts, lev, counts[lev] + k, st)} />)}
         </td>
         <td>{over ? <span class="bad" data-tip={t("schedule.limitWait", { text: limitText(limit, v), vehicle: v })}>{headway(tph)}</span> : headway(tph)}</td>
       </>
@@ -162,8 +165,8 @@ function LevelCells({ l, st, d, auto, limits }: { l: LineInput; st: LineStats; d
       </td>
       <td>
         {wrap(<Stepper wide jump jumpUnit={t("schedule.minUnit")} label={t("schedule.headwayLabel")} value={short ? <span class="bad">{headwayText(auto[lev])}</span> : headwayText(auto[lev])} onStep={(s) => stepHeadway(l.id, d, s)}
-          tipDown={changeTip(counts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], -1), lim, loop), st)}
-          tipUp={changeTip(counts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], 1), lim, loop), st)}
+          tipDown={changeTip(fleetCounts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], -1), lim, loop), st)}
+          tipUp={changeTip(fleetCounts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], 1), lim, loop), st)}
           type={{ text: auto[lev] ? String(+(auto[lev] / 60).toFixed(2)) : "0", set: (v) => setHeadway(l.id, d, headwayFromMinutes(v)), tip: short ? t("schedule.limitWait", { text: limitText(limit, v), vehicle: v }) : undefined }} />)}
       </td>
     </>
@@ -182,21 +185,27 @@ function DayHeading({ row, v }: { row: number; v: Vehicle }) {
 /** A level's cells on weekend days (`row` 1) or holidays (2): its count, at most the weekdays'
  * (`restShown`), and the headway it gives at the weekdays' round trip. */
 function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStats; d: Demand; row: number; auto: boolean; limits: (Limit | null)[] }) {
-  const v = vehicleOf(st), lev = DEMAND_INDEX[d];
-  const n = restShown(l.id, row)?.[lev] ?? 0, most = trainsShown(l.id)?.[lev] ?? 0;
-  const twin = st.twin ? world.value?.save.lines.find((x) => x.id === st.twin) : undefined;
-  const tph = most > 0 ? ((l.tph[d] + (twin?.tph[d] ?? 0)) * n) / most : 0;
+  const v = vehicleOf(st), lev = DEMAND_INDEX[d], i = row * 3 + lev;
+  // all nine counts, as the fleet is the most of them (`cars_needed` in sim/src/track/wasm.rs)
+  const all = [...(trainsShown(l.id) ?? st.trainsNeeded), ...(restShown(l.id, 1) ?? []), ...(restShown(l.id, 2) ?? [])];
+  const n = all[i] ?? 0;
+  const trip = st.roundTripByLevel[lev], limit = limits[lev];
+  // the track holds as many on a weekend as on a weekday: the weekdays' cap (T-3165)
+  const most = trainCap(st, trip, limit?.s ?? null);
+  // a count still on its way shows the rate it will run, as a weekday count does (T-1276)
+  const ran = st.rest ? st.rest[i - 3] : st.trainsNeeded[lev];
+  const tph = n === ran && st.restTph ? st.restTph[i - 3] : trip > 0 ? (n * 3600) / trip : 0;
+  const k = loopHalves(st) ? 2 : 1;
+  const down = changeTip(all, i, Math.max(0, n - k), st);
+  const up = n >= most && limit !== null && most < MAX_TYPED_VEHICLES ? limitText(limit, v) : changeTip(all, i, n + k, st);
   if (auto) {
     // under headways, as the weekdays' rows: the headway is stepped and the count follows it
-    const trip = st.roundTripByLevel[lev];
-    const atMost = n >= most ? t("schedule.restMost", { vehicle: v }) : undefined;
     return (
       <>
         <td>{n}</td>
         <td>
           <Stepper wide label={t("schedule.restHeadwayLabel", { day: DAY_SECTIONS[row] })} value={headwayText(tph > 0 ? 3600 / tph : 0)}
-            onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, limits[lev]?.s ?? 0, loopHalves(st))}
-            tipDown={atMost} />
+            onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, limit?.s ?? 0, k === 2, most)} />
         </td>
       </>
     );
@@ -205,8 +214,7 @@ function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStat
     <>
       <td>
         <Stepper value={n} label={t("schedule.restLabel", { day: DAY_SECTIONS[row], vehicle: v })}
-          onStep={(s) => stepRest(l.id, row, d, s)}
-          tipUp={n >= most ? t("schedule.restMost", { vehicle: v }) : undefined} />
+          onStep={(s) => stepRest(l.id, row, d, s, most)} tipDown={down} tipUp={up} />
       </td>
       <td>{headway(tph)}</td>
     </>

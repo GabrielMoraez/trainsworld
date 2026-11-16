@@ -1699,7 +1699,6 @@
   "schedule.daySectionTip": "Hover on a kind of day's section heading in the schedule table. day: weekdays, weekend or holidays; vehicle: train, tram, bus or boat.",
   "schedule.restLabel": "Screen-reader label of the weekend or holiday count stepper in the schedule table. day: weekend or holidays; vehicle: train, tram, bus or boat.",
   "schedule.restHeadwayLabel": "Screen-reader label of the headway stepper of a weekend or holiday row of the schedule table, under headways (the count follows the headway). day: weekend or holidays.",
-  "schedule.restMost": "Hover of the up arrow of a weekend or holiday count in the schedule table when it is at the weekday count, its most. vehicle: train, tram, bus or boat.",
   "schedule.demandName": "A demand level's name on its own, in the schedule table and hovers. demand: high, medium or low.",
   "schedule.departedFull": "Hover on the vehicles-leaving-full figure of a line view. full, all: counts, \"3\" and \"40\"; vehicle: train, bus or boat.",
   "schedule.frees": "Line of a schedule stepper hover: the vehicles the change frees (they stay owned). unit: a count with its noun, \"2 cars\".",

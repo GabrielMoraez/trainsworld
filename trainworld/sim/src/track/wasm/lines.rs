@@ -529,9 +529,18 @@ impl TrackApi {
         if id as usize >= self.w.net.line_count() || lev as usize >= LEVELS { return 0.0 }
         self.w.net.line_tph_on(id as usize, (row as usize).min(HOLIDAYS), lev as usize)
     }
-    /// Set a line's trains on weekend days and holidays (six counts as `line_rest` gives them), each
-    /// kept to at most the weekdays' count of its level when it runs; no counts: every day runs the
-    /// weekdays'. One undoable edit.
+    /// A line's trains an hour on weekend days then holidays, high, medium, low (`line_tph_on`), with
+    /// its hidden twin's for a line on both pairs, as its panel shows the weekdays' (T-3333).
+    pub fn line_tph_rest(&self, id: u32) -> Vec<f32> {
+        let net = &self.w.net;
+        let twin = net.twin_line(id);
+        (1..=2).flat_map(|row| (0..3).map(move |lev| (row, lev)))
+            .map(|(row, lev)| net.line_tph_on(id as usize, row, lev) + twin.map_or(0.0, |t| net.line_tph_on(t as usize, row, lev)))
+            .collect()
+    }
+    /// Set a line's trains on weekend days and holidays (six counts as `line_rest` gives them), more
+    /// or fewer than its weekday counts; no counts: every day runs the weekdays'. One undoable edit,
+    /// charged for the trains it makes the line need (`cars_needed`).
     pub fn set_line_rest(&mut self, id: u32, counts: &[u32]) -> u32 {
         let Some(mut d) = self.w.net.line_data(id) else { return self.refuse(Issue::NoSuchLine { line: id }) };
         d.rest = if counts.len() == 6 {

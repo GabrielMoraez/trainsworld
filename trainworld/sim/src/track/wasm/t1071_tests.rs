@@ -69,3 +69,15 @@ fn a_weekday_change_leaves_the_weekend_and_holidays() {
     assert_eq!(a.set_train_counts(id, 6, 3, 2), 0, "{}", a.issues());
     assert_eq!(a.line_rest(id), vec![1, 1, 0, 2, 1, 1], "counts of its own are left as set");
 }
+
+/// The fleet is the most trains a line runs on any kind of day at any level, so more weekend trains
+/// are bought.
+#[test]
+fn more_weekend_trains_are_bought() {
+    let (mut a, id) = line_api();
+    let cars = a.cars_needed();
+    assert_eq!(a.set_line_rest(id, &[6, 2, 2, 2, 2, 2]), 0, "{}", a.issues());
+    assert_eq!(a.cars_needed(), cars * 3, "six trains on a weekend, two on weekdays");
+    assert_eq!(a.set_line_rest(id, &[1, 1, 0, 0, 0, 0]), 0, "{}", a.issues());
+    assert_eq!(a.cars_needed(), cars, "fewer at the weekend: the weekdays' fleet");
+}

@@ -50,7 +50,9 @@ use super::twin::Twin;
 /// line's index); without it no line has one.
 /// A trailing `LDT1` block gives the lines with trains of their own on weekend days and holidays
 /// (`LineData::rest`): count, then per line its index and six counts (weekend high, medium, low,
-/// then holidays'); without it every line runs its weekday trains every day.
+/// then holidays'); without it every line runs its weekday trains every day. Then which kinds of day
+/// were settled on their own (bit 0 weekend days, bit 1 holidays, `Network::rest_solved`) and, for
+/// each, its rates and kept lines as `LRT1` gives the weekdays'.
 const MAGIC: &[u8; 4] = b"TWT4";
 /// TWT5 (T-125) is TWT4 byte for byte except that the metres are in the Lambert conformal world
 /// frame (`frame.rs`). TWT4 and older are always the legacy equirectangular frame, and a network
@@ -536,6 +538,23 @@ pub fn encode(net: &Network) -> Vec<u8> {
             w.u(i as u64);
             for row in c { for v in row { w.u(v as u64); } }
         }
+        // the settled rates to the bit, so a load runs the same weekend and holiday trains
+        let solved = if net.rates_settled { net.rest_solved } else { [false; 2] };
+        w.u(solved[0] as u64 | (solved[1] as u64) << 1);
+        let rated: Vec<usize> = lines.iter().enumerate().filter(|(_, &l)| net.line_trains[l as usize].is_some()).map(|(i, _)| i).collect();
+        for k in (0..2).filter(|&k| solved[k]) {
+            w.u(rated.len() as u64);
+            for &i in &rated {
+                w.u(i as u64);
+                for r in net.line_tph_rest[lines[i] as usize][k] { w.u(r.to_bits() as u64); }
+            }
+            let kept: Vec<_> = net.settle_kept_rest[k].iter().filter(|x| index.get(x.0 as usize).is_some_and(|&i| i != u32::MAX)).collect();
+            w.u(kept.len() as u64);
+            for &(l, lev, rate, trip, trains) in kept {
+                w.u(index[l as usize] as u64);
+                w.u(lev as u64); w.u(rate as u64); w.u(trip); w.u(trains as u64);
+            }
+        }
     }
     w.0
 }
@@ -1009,6 +1028,19 @@ pub fn decode_read(bytes: &[u8]) -> Result<(Network, usize), String> {
             let mut c = [[0u32; 3]; 2];
             for row in c.iter_mut() { for v in row.iter_mut() { *v = r.u()?.min(u32::MAX as u64) as u32; } }
             if i < n_lines { net.line_rest[i] = Some(c); }
+        }
+        let solved = r.u()?;
+        for k in (0..2).filter(|&k| solved >> k & 1 == 1) {
+            for _ in 0..r.u()? {
+                let i = r.u()? as usize;
+                let rates = [r.u()? as u32, r.u()? as u32, r.u()? as u32].map(f32::from_bits);
+                if i < n_lines { net.line_tph_rest[i][k] = rates; }
+            }
+            for _ in 0..r.u()? {
+                let (l, lev, rate, trip, trains) = (r.u()? as u32, r.u()? as usize, r.u()? as u32, r.u()?, r.u()? as u32);
+                if (l as usize) < n_lines && lev < 3 { net.settle_kept_rest[k].push((l, lev, rate, trip, trains)); }
+            }
+            net.rest_solved[k] = true;
         }
     }
     for l in manual {

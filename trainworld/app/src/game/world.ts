@@ -145,57 +145,56 @@ function changeTrains(id: LineId, demand: Demand, to: (now: number, step: number
 }
 
 // ---- Weekend and holiday trains (`LineStats.rest`, `TrackApi.set_line_rest`): each level's count on
-// weekend days and on holidays, at most the weekdays' count of that level (fewer trains only ever
-// free the track the weekdays' were checked against).
+// weekend days and on holidays, more or fewer than on weekdays; the sim settles each kind of day on
+// the track on its own and buys the trains the busiest needs.
 
 /** Counts sent and not yet in the world, as `pendingTrains`: a second click before the first edit
  * lands steps from the first's count, not the world's older one. */
 const pendingRest = signal<ReadonlyMap<LineId, number[]>>(new Map());
 
 /** A line's trains on kind of day `row` (1 weekend days, 2 holidays) per level as they show: its own,
- * at most the weekdays', or the weekdays' where it has none of its own; row 0 the weekdays'. */
+ * or the weekdays' where it has none of its own; row 0 the weekdays'. */
 export function restShown(id: LineId, row: number): [number, number, number] | null {
   const wk = trainsShown(id);
   if (!wk || row === 0) return wk;
   const st = world.value?.lineStats[id];
   const own = pendingRest.value.get(id) ?? st?.rest;
-  return wk.map((n, lev) => (own && own.length === 6 ? Math.min(own[(row - 1) * 3 + lev], n) : n)) as [number, number, number];
+  return wk.map((n, lev) => (own && own.length === 6 ? own[(row - 1) * 3 + lev] : n)) as [number, number, number];
 }
 
 /** Step a line's trains for a level on weekend days or holidays (`row` 1 or 2), between none and
- * the weekdays' count; false when it cannot move (the stepper shakes). */
-export function stepRest(id: LineId, row: number, demand: Demand, by: number): boolean {
+ * `most` (`trainCap`, as a weekday count); false when it cannot move (the stepper shakes). */
+export function stepRest(id: LineId, row: number, demand: Demand, by: number, most: number): boolean {
   const n = restShown(id, row)?.[DEMAND_INDEX[demand]];
-  return n !== undefined && setRest(id, row, demand, n + by * trainStep(id));
+  return n !== undefined && setRest(id, row, demand, n + by * trainStep(id), most);
 }
 
 /** Step the headway a line's weekend or holiday count gives at a level (`dir` 1 longer, -1
  * shorter), by the weekdays' headway steps (`nextHeadway`), to the count that keeps it at the
  * weekdays' round trip `trip` (`autoTrainsFor`). The sim keeps counts, not headways, for these days,
  * so a headway that needs the same count is stepped past. */
-export function stepRestHeadway(id: LineId, row: number, demand: Demand, dir: number, trip: number, limitS: number, loop: boolean): boolean {
+export function stepRestHeadway(id: LineId, row: number, demand: Demand, dir: number, trip: number, limitS: number, loop: boolean, most: number): boolean {
   const n = restShown(id, row)?.[DEMAND_INDEX[demand]];
   if (n === undefined || trip <= 0) return false;
   let h = n > 0 ? trip / n : 0;
   for (let i = 0; i < 60; i++) {
     h = nextHeadway(h, dir);
     // the shortest headway's step down is no service, which is the wrong way for more trains
-    if (h <= 0) return dir > 0 && setRest(id, row, demand, 0);
+    if (h <= 0) return dir > 0 && setRest(id, row, demand, 0, most);
     const to = autoTrainsFor(trip, h, limitS, loop);
-    if (dir > 0 ? to < n : to > n) return setRest(id, row, demand, to);
-    if (h >= HEADWAY_MAX_S) return dir > 0 && setRest(id, row, demand, 0);
+    if (dir > 0 ? to < n : to > n) return setRest(id, row, demand, to, most);
+    if (h >= HEADWAY_MAX_S) return dir > 0 && setRest(id, row, demand, 0, most);
   }
   return false;
 }
 
 /** Set a line's trains for a level on weekend days or holidays (`row` 1 or 2), kept between none
- * and the weekdays' count; false when that changes nothing (the stepper shakes). */
-function setRest(id: LineId, row: number, demand: Demand, want: number): boolean {
-  const wk = trainsShown(id);
-  if (!wk || (row !== 1 && row !== 2)) return false;
+ * and `most`; false when that changes nothing (the stepper shakes). */
+function setRest(id: LineId, row: number, demand: Demand, want: number, most: number): boolean {
+  if (!trainsShown(id) || (row !== 1 && row !== 2)) return false;
   const all = [...restShown(id, 1)!, ...restShown(id, 2)!];
   const i = (row - 1) * 3 + DEMAND_INDEX[demand];
-  const to = Math.max(0, Math.min(wk[DEMAND_INDEX[demand]], want));
+  const to = Math.max(0, Math.min(most, want));
   if (to === all[i]) return false;
   all[i] = to;
   pendingRest.value = new Map(pendingRest.value).set(id, all);
