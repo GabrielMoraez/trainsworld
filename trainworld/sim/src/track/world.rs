@@ -428,14 +428,17 @@ impl TrackWorld {
                 for l in 0..n { self.net.line_tph[l] = self.net.line_tph_rest[l][k]; }
             }
             for &(l, c) in &own { self.net.line_trains[l] = Some(c); }
-            // the service (round trips, holds, how full each track is) on that day's trains before
+            // the service (round trips, holds, how full each track is) on that day's rates before
             // its settle reads it: on the weekdays' a track full on weekdays held every line on it,
-            // so a weekend count raised there took effect only with the next edit
-            let lines: Vec<u32> = (0..n as u32).filter(|&l| self.net.line_ok(l) && self.net.line_trains[l as usize].is_some() && self.svc.lines[l as usize].ok).collect();
-            let d = self.svc.update_scoped(&self.net, &[], &lines, true, Some((&[], &[])));
-            affected.extend(d.recomputed);
+            // so a weekend count raised there took effect only with the next edit. Only the lines
+            // whose rates differ are worked out again, the rest already run them.
+            let ok: Vec<bool> = self.svc.lines.iter().map(|s| s.ok).collect();
+            let differ = |net: &crate::track::net::Network| -> Vec<u32> { (0..n as u32).filter(|&l| net.line_tph[l as usize] != week_tph[l as usize] && ok.get(l as usize) == Some(&true)).collect() };
+            let moved = differ(&self.net);
+            if !moved.is_empty() { affected.extend(self.svc.update_scoped(&self.net, &[], &moved, true, Some((&[], &[]))).recomputed); }
             affected.extend(self.settle_day(full));
             for l in 0..n { self.net.line_tph_rest[l][k] = self.net.line_tph[l]; }
+            let moved = differ(&self.net);
             // a loop's counts were made even (as its weekday counts are), which the line keeps
             for &(l, _) in &own {
                 if let (Some(rest), Some(c)) = (self.net.line_rest[l].as_mut(), self.net.line_trains[l]) { rest[k] = c; }
@@ -443,11 +446,10 @@ impl TrackWorld {
             self.net.settle_kept_rest[k] = std::mem::replace(&mut self.net.settle_kept, week_kept);
             self.net.line_trains = week_trains;
             self.net.line_tph = week_tph;
+            if !moved.is_empty() { affected.extend(self.svc.update_scoped(&self.net, &[], &moved, true, Some((&[], &[]))).recomputed); }
         }
         let ids: Vec<u32> = (0..n as u32).filter(|&l| self.net.line_ok(l) && self.net.line_trains[l as usize].is_some() && self.svc.lines[l as usize].ok).collect();
         if swapped {
-            let d = self.svc.update_scoped(&self.net, &[], &ids, true, Some((&[], &[])));
-            affected.extend(d.recomputed);
             for &id in &ids { self.svc.lines[id as usize].trains = self.net.line_trains[id as usize].unwrap(); }
         }
         let on = |l: usize, k: usize, t: &[[[f32; 3]; 2]], s: [bool; 2]| if s[k] { t.get(l).map(|x| x[k]) } else { self.net.line_tph.get(l).copied() };

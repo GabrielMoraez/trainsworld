@@ -236,7 +236,7 @@ const rowOfLine = (id: number) => rowOfIn(holidayData, lineCountries.get(id));
 // `run` per hour by level and kind of day (weekdays' high, medium, low, then weekend days', then
 // holidays'; `TrackApi.running_cost`), each day's kind by `rowOf` (the week's unless given).
 const costHour = (run: number[], tl: number, tail: number[][] | undefined, rowOf: (day: number) => DayRow = rowOfDay) => lagged(((r, p) =>
-  run[r * 3 + LEVEL_OF[PERIODS[p].demand]] + (tail?.[r]?.[p] ?? 0) / (PERIODS[p].to - PERIODS[p].from)) as PerHour, null, tl, moneyLag, moneyLag / 2, rowOf as unknown as KindOf);
+  run[r * 3 + LEVEL_OF[PERIODS[p].demand]] + (tail?.[r]?.[p] ?? 0) / (PERIODS[p].to - PERIODS[p].from)) as PerHour, null, tl, moneyLag, moneyLag / 2, rowOf);
 /** T-835 (service.rs `period_points`): a period followed by no service runs to its own end, not
  * half a run before it, so its line runs that much longer a day at its level; `run` per hour by
  * level and kind of day as `costHour`'s, `tph` trains an hour likewise, from `lines_info` entry `i`.

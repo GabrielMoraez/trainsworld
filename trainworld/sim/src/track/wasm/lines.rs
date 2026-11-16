@@ -774,7 +774,6 @@ fn route_stop_ways(net: &Network, pts: &[[f64; 2]], plan: &crate::track::bus::Pl
     out.into_iter().filter_map(|(i, h)| h.map(|h| [stops[i].id as f64, h])).flatten().collect()
 }
 
-/// T-3333: line `l` runs on both pairs, so its stored counts and headways are one pair's.
 /// Before the player changes a line's weekday trains: a line still running them every day keeps
 /// them on weekend days and holidays, so a weekday edit leaves the other kinds of day as they were.
 /// Outside the undo history, as it changes no departure (the pinned counts are the weekdays').
@@ -785,6 +784,7 @@ fn pin_rest(net: &mut Network, l: u32) {
     }
 }
 
+/// T-3333: line `l` runs on both pairs, so its stored counts and headways are one pair's.
 fn pairs_split(net: &Network, l: u32) -> bool {
     net.line_twin_of(l) == (crate::track::twin::Twin::Parent { split: true })
 }
