@@ -295,27 +295,22 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
           <th>{manyCap(v)}</th>
           <th>{t("schedule.headway")}</th>
         </tr>
-        <DayHeading row={0} v={v} />
-        {DEMANDS.map((d) => {
-          // T-1783: no dot on a level with no vehicles
-          const dot = st.status === "running" && (trainsShown(l.id) ?? st.trainsNeeded)[DEMAND_INDEX[d]] > 0;
-          const p = dot && crowd && lineFiguresIn(demandView.value, l.id, stops) ? crowd : null;
-          return (
-            <tr class={d === now && today === 0 ? "now" : ""}>
-              <td><LevelName v={p} d={d} stops={stops} flip={flip} ends={endNames(l)} vehicle={vehicleOf(st)} pending={dot && !p && demandPending.value} /></td>
-              <LevelCells l={l} st={st} d={d} auto={auto} limits={limits} />
-            </tr>
-          );
-        })}
-        {[1, 2].map((row) => (
+        {[0, 1, 2].map((row) => (
           <>
             <DayHeading row={row} v={v} />
-            {DEMANDS.map((d) => (
-              <tr class={d === now && today === row ? "now" : ""}>
-                <td><span data-tip={levelTimes(d)}>{demandLabel(d)}</span></td>
-                <RestCells l={l} st={st} d={d} row={row} auto={auto !== null} limits={limits} />
-              </tr>
-            ))}
+            {DEMANDS.map((d) => {
+              // T-1783: no dot on a level with no vehicles
+              const dot = st.status === "running" && (trainsShown(l.id) ?? st.trainsNeeded)[DEMAND_INDEX[d]] > 0;
+              const p = dot && crowd && lineFiguresIn(demandView.value, l.id, stops) ? crowd : null;
+              return (
+                <tr class={d === now && today === row ? "now" : ""}>
+                  <td><LevelName v={p} d={d} stops={stops} flip={flip} ends={endNames(l)} vehicle={vehicleOf(st)} pending={dot && !p && demandPending.value} /></td>
+                  {row === 0
+                    ? <LevelCells l={l} st={st} d={d} auto={auto} limits={limits} />
+                    : <RestCells l={l} st={st} d={d} row={row} auto={auto !== null} limits={limits} />}
+                </tr>
+              );
+            })}
           </>
         ))}
       </table>
