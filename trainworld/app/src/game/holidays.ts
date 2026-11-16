@@ -46,6 +46,17 @@ export const rowIn = (country: string | null, day: number) => rowOfIn(data.value
 /** The kind of local game day `day` in `country` (T-872). Reads the calendar signal. */
 export const kindIn = (country: string | null, day: number) => kindOfIn(data.value, country)(day);
 
+/** The boarding account a line's crowding on local game day `day` in `country` reads (the clock
+ * worker's `linePeriods`, `linesPeriods`): its kind of day, but a public holiday's own account,
+ * `HOLIDAY_ACCOUNT`, where a Sunday's riders ride the holiday trains (sim boarding.rs
+ * `HOLIDAY_ACCT`; a line running its weekend trains on holidays reads the Sunday's there). */
+export const accountKindIn = (country: string | null, day: number): number => {
+  const k = kindIn(country, day);
+  return k === 2 && rowIn(country, day) === 2 ? HOLIDAY_ACCOUNT : k;
+};
+/** sim/src/track/boarding.rs `HOLIDAY_ACCT` */
+export const HOLIDAY_ACCOUNT = 6;
+
 /** A line's country (T-872): its first stop's, as its local time is. */
 export function lineCountry(stops: readonly string[]): string | null {
   const st = world.value?.save.stations;

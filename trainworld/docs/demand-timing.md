@@ -65,7 +65,10 @@ holidays; [track-and-service.md](track-and-service.md) "Scheduling"), the weekda
 has its own. The boarding account works out a
 weekend day's crowding from its scaled riders on that day's trains (each kind of day's account runs
 its kind's trains whatever day it starts on, `Boarding::kind_row`: a Saturday and a Sunday the
-weekend's, a superholiday's days away and back the holidays'), and running cost follows them.
+weekend's, a superholiday's days away and back the holidays'; a public holiday has an account of
+its own, a Sunday's riders on the holiday trains, `HOLIDAY_ACCT`, for a line whose holiday trains
+are not its weekend ones, told from a Sunday by the line's calendar, `Boarding::rows`), so a kind of
+day's crowding moves only with its own trains; and running cost follows them.
 The solve is a weekday's, on the weekday counts; weekend and holiday riders are still scaled from it,
 so fewer weekend trains crowd them rather than lose them, and more carry them in more room but win
 no riders. **A superholiday's day away** (T-264) is a fourth kind,

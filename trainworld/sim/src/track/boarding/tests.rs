@@ -972,3 +972,48 @@ fn a_saturdays_crowding_is_on_the_weekend_trains() {
     let (mon, sat) = (trains(0), trains(1));
     assert!(sat > 1.15 * mon, "{sat} trains on a Saturday, {mon} on a weekday");
 }
+
+/// A public holiday's crowding is a Sunday's riders on the holiday trains (`HOLIDAY_ACCT`): more
+/// weekend trains move the Sunday's crowding and leave the holiday's, and a holiday on the line's
+/// calendar reads its own account.
+#[test]
+fn more_weekend_trains_leave_the_holidays_crowding() {
+    use crate::track::world::Op;
+    let (mut w, l) = setup(10.0);
+    let tph = w.net.line_tph[l as usize];
+    w.apply(Op::TrainCounts { id: l, trains: Some([2, 2, 2]), tph }).unwrap();
+    let mut b = Boarding::default();
+    b.set_riders_day(&riders(l, [500.0, 200.0, 500.0, 200.0, 50.0]), 0);
+    b.set_riders_day(&riders(l, [300.0, 200.0, 300.0, 200.0, 50.0]), 2);
+    let trains = |b: &Boarding, w: &crate::track::world::TrackWorld, day: usize| {
+        let v = b.line_periods(&w.svc, l as usize, day);
+        (0..PERIODS).map(|p| v[p * PERIOD_STRIDE]).sum::<f64>()
+    };
+    let rest = |w: &mut crate::track::world::TrackWorld, weekend: u32| {
+        let mut d = w.net.line_data(l).unwrap();
+        d.rest = Some([[weekend, 2, 2], [2, 2, 2]]);
+        w.apply(Op::Line { id: l, data: Some(d) }).unwrap();
+    };
+    rest(&mut w, 1);
+    b.ensure(&w.net, &w.svc);
+    let (sun1, hol1) = (trains(&b, &w, 2), trains(&b, &w, HOLIDAY_ACCT));
+    assert!(hol1 > sun1, "{hol1} trains on a holiday, {sun1} on a Sunday");
+    rest(&mut w, 3);
+    b.ensure(&w.net, &w.svc);
+    let (sun3, hol3) = (trains(&b, &w, 2), trains(&b, &w, HOLIDAY_ACCT));
+    assert!(sun3 > 1.5 * sun1, "the Sunday's crowding follows the weekend trains: {sun1} then {sun3}");
+    assert_eq!(hol3, hol1, "the holiday's crowding is left as it was");
+    // Tuesday (day 2) a public holiday on the line's calendar: a Sunday's riders, its own account
+    let tue = 2.0 * 86400.0 + 9.0 * 3600.0;
+    assert_eq!(b.kind_at(tue, l as usize), 0);
+    b.holidays.insert(l, vec![(2, 2)]);
+    b.set_rows(&[l as f64, 1.0, 2.0, HOLIDAYS as f64]);
+    assert_eq!(b.kind_at(tue, l as usize), HOLIDAY_ACCT);
+    // a line running its weekend trains on holidays reads the Sunday's
+    let mut d = w.net.line_data(l).unwrap();
+    d.rest = Some([[3, 2, 2], [3, 2, 2]]);
+    w.apply(Op::Line { id: l, data: Some(d) }).unwrap();
+    b.ensure(&w.net, &w.svc);
+    assert_eq!(b.kind_at(tue, l as usize), 2);
+    assert_eq!(trains(&b, &w, HOLIDAY_ACCT), trains(&b, &w, 2));
+}

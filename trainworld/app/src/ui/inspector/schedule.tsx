@@ -16,7 +16,7 @@ import { accountVersion, capacity } from "../../game/boarding";
 import { onRails, vehicleCars, vehicleOf, type Vehicle } from "../../game/vehicle";
 import { lineSeconds } from "../../game/clock";
 import { DAY_KIND_NAME } from "../../game/days";
-import { kindIn, lineCountry, rowIn } from "../../game/holidays";
+import { accountKindIn, HOLIDAY_ACCOUNT, kindIn, lineCountry, rowIn } from "../../game/holidays";
 import { useClockQuery } from "../useClockQuery";
 import { DEMAND_INDEX, DEMANDS, loopHalves, type Demand, type LineInput, type LineStats } from "../../game/types";
 import { pendingLabel } from "../../game/lineFigures";
@@ -273,11 +273,12 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
   // the same level is in force in all three sections, so only today's kind of day bolds it
   const country = lineCountry(l.stops), day = Math.floor(lineSeconds(st) / 86400);
   const today = rowIn(country, day);
-  // T-1677: each section's crowding dots are its own kind of day's (game/days.ts): today's in
-  // today's section (`crowd`, which the panel asked for), else a weekday, a Saturday and a Sunday,
-  // as a public holiday runs; one ask per section, a fixed three so the hooks hold
-  const todayKind = kindIn(country, day), acct = accountVersion.value;
-  const kindOfRow = (row: number) => (row === today ? todayKind : ([0, 1, 2] as const)[row]);
+  // T-1677: each section's crowding dots are its own kind of day's: today's in today's section
+  // (`crowd`, which the panel asked for), else a weekday's, a Saturday's and a public holiday's (a
+  // Sunday's riders on the holiday trains, `HOLIDAY_ACCOUNT`), so a section's dots move only with
+  // its own trains; one ask per section, a fixed three so the hooks hold
+  const acct = accountVersion.value;
+  const kindOfRow = (row: number) => [0, 1, HOLIDAY_ACCOUNT][row];
   const asked = [0, 1, 2].map((row) => useClockQuery(row !== today ? { what: "linePeriods", line: l.num, day: kindOfRow(row) } : null, [l.num, w?.version, acct, kindOfRow(row), row !== today], (x) => (x.length ? x : null)) ?? null);
   const crowdOf = (row: number) => (row === today ? crowd : asked[row]);
   return (
@@ -351,9 +352,10 @@ export function AverageSpeed({ st, lev }: { st: LineStats; lev: number }) {
  * by period on it (`TrackApi.line_periods`, T-477, T-491), asked again as the account changes. */
 export function useLinePeriods(id: string, l: LineInput | undefined): { kind: number; periods: Float64Array | null } {
   const w = world.value;
-  const kind = kindIn(lineCountry(l?.stops ?? []), Math.floor(lineSeconds(w?.lineStats[id]) / 86400));
+  const country = lineCountry(l?.stops ?? []), day = Math.floor(lineSeconds(w?.lineStats[id]) / 86400);
+  const kind = kindIn(country, day), account = accountKindIn(country, day);
   const acct = accountVersion.value;
-  const periods = useClockQuery(l ? { what: "linePeriods", line: l.num, day: kind } : null, [l?.num, w?.version, acct, kind], (d) => (d.length ? d : null)) ?? null;
+  const periods = useClockQuery(l ? { what: "linePeriods", line: l.num, day: account } : null, [l?.num, w?.version, acct, account], (d) => (d.length ? d : null)) ?? null;
   return { kind, periods };
 }
 

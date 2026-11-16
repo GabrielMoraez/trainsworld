@@ -21,7 +21,7 @@ import { listWorld, scopedLists, stationZone } from "../game/listScope";
 import { accountVersion } from "../game/boarding";
 import { crowdClass, crowdLevel, dayNote, endNames, PERIOD_STRIDE, pendingOf, pendingRiders, periodLoad, profitKnown, runningToday, today, todayLoaded, upkeepToday, useToday, type LineToday } from "../game/today";
 import { lineReversed } from "../game/northUp";
-import { kindIn, lineCountry } from "../game/holidays";
+import { accountKindIn, HOLIDAY_ACCOUNT, lineCountry } from "../game/holidays";
 import { DAY_KINDS } from "../game/days";
 import { demandView, lineFiguresIn } from "../game/demand";
 import { useClockQuery } from "./useClockQuery";
@@ -151,11 +151,11 @@ export function LinesTab() {
   const w = listWorld.value;
   // T-1677, T-2279: every running train line's crowding by period on its own kind of day, for the
   // trains cells, asked again when the network or the boarding account changes: one ask per kind of
-  // day, a fixed six so the hooks hold
+  // day and a public holiday's (`accountKindIn`), a fixed seven so the hooks hold
   const crowdLines = (w ? listedLines(w) : []).filter((l) => w!.lineStats[l.id]?.status === "running");
   const acct = accountVersion.value;
-  const kindOf = (l: LineInput) => kindIn(lineCountry(l.stops), Math.floor(lineSeconds(w!.lineStats[l.id]) / 86400));
-  const byKind = DAY_KINDS.map((k) => crowdLines.filter((l) => kindOf(l) === k).map((l) => l.num));
+  const kindOf = (l: LineInput) => accountKindIn(lineCountry(l.stops), Math.floor(lineSeconds(w!.lineStats[l.id]) / 86400));
+  const byKind = [...DAY_KINDS, HOLIDAY_ACCOUNT].map((k) => crowdLines.filter((l) => kindOf(l) === k).map((l) => l.num));
   const kindCrowd = byKind.map((nums, k) => useClockQuery(nums.length ? { what: "linesPeriods", lines: nums, day: k } : null, [w?.version, acct, nums.join(",")], (d) => d));
   if (!w) return null;
   // T-1926: each line's numbers come after their count, in `nums`' order

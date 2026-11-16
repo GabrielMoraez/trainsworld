@@ -293,7 +293,8 @@ purpose filter the purpose drawn is ringed in the bar.
   jumped as theirs, every hover the Weekdays row's (the track's limit; a headway past it red with its
   wait; under headways the count's round trip); each section's level names carry the crowding dot
   and hover of its own kind of day (today's in today's section, else a weekday's, a Saturday's and a
-  Sunday's, `linePeriods`); under headways the Weekend and Holidays headway steps from the headway
+  public holiday's, `linePeriods`, `accountKindIn`), so editing one section's trains moves only its
+  own dots; under headways the Weekend and Holidays headway steps from the headway
   shown (`restHeadwayStep`); every − and + in the table, on all three kinds of day, has
   one hover: what the click sets ("11 trains", a headway's "12 trains, one every 5 min",
   `schedule.stepEvery`), then what it buys, takes from the depot or frees, counting every kind of

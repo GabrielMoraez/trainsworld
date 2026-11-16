@@ -300,6 +300,13 @@ pub struct LineAccount {
 /// kind of day (T-260, `day_kind_at`), as the same trains carry a weekday's, a Saturday's or a
 /// Sunday's riders.
 /// A kind with no riders reads the weekday's.
+/// The account of a public holiday on a line whose holiday trains are not its weekend ones: a
+/// Sunday's riders (a public holiday's demand, T-262) on the holiday trains. A line running its
+/// weekend trains on holidays reads the Sunday's account then, as it carries the same.
+pub const HOLIDAY_ACCT: usize = DAY_KINDS;
+/// Accounts per line: one per kind of day, and `HOLIDAY_ACCT`.
+pub const ACCOUNTS: usize = DAY_KINDS + 1;
+
 #[derive(Clone, Debug, Default)]
 pub struct Boarding {
     /// busiest-hour factor per period (demand's, T-087)
@@ -307,7 +314,14 @@ pub struct Boarding {
     /// per kind of day, per line id
     pub riders: [Vec<Option<LineRiders>>; DAY_KINDS],
     generation: [u64; DAY_KINDS],
-    pub accounts: [Vec<Option<LineAccount>>; DAY_KINDS],
+    pub accounts: [Vec<Option<LineAccount>>; ACCOUNTS],
+    /// Per line id, whether its holiday trains are not its weekend ones, so a public holiday has
+    /// its own account (`HOLIDAY_ACCT`); worked out by `ensure_some`.
+    holiday_trains: Vec<bool>,
+    /// Per line id, its local days whose kind of trains is not the week's, with that kind
+    /// (`params::WEEKDAYS`, `WEEKEND`, `HOLIDAYS`): what the service's `Cal` is made from
+    /// (`TrackApi::set_line_rows`), which tells a public holiday from a Sunday.
+    pub rows: HashMap<u32, Vec<(i64, u8)>>,
     /// lines worked out again since `take_redone`
     redone: usize,
     /// where `ensure_some` goes on from: day kind times lines plus line
@@ -441,7 +455,9 @@ impl Boarding {
         for d in 0..DAY_KINDS {
             self.generation[d] += 1;
             self.riders[d].clear();
-            self.accounts[d].clear();
+        }
+        for a in self.accounts.iter_mut() {
+            a.clear();
         }
         self.masks.clear();
         self.xfer.clear();
@@ -473,7 +489,32 @@ impl Boarding {
     pub fn kind_at(&self, t: f64, line: usize) -> usize {
         let day = (t / DAY).floor() as i64;
         let given = self.holidays.get(&(line as u32)).and_then(|d| d.iter().find(|x| x.0 == day)).map(|x| x.1);
-        self.kind(given.unwrap_or_else(|| day_kind_at(t)))
+        let k = self.kind(given.unwrap_or_else(|| day_kind_at(t)));
+        // a Sunday's riders on a day the line runs its holiday trains: a public holiday, or a
+        // superholiday's day away or back without riders of its own
+        let row = self.rows.get(&(line as u32)).and_then(|d| d.iter().find(|x| x.0 == day)).map(|x| x.1 as usize);
+        if k == 2 && row == Some(HOLIDAYS) && self.holiday_trains.get(line).copied().unwrap_or(false) { HOLIDAY_ACCT } else { k }
+    }
+
+    /// `kind` for line `l`'s account: `HOLIDAY_ACCT` reads the Sunday's where the line runs its
+    /// weekend trains on holidays.
+    fn kind_for(&self, day: usize, l: usize) -> usize {
+        let k = self.kind(day);
+        if k == HOLIDAY_ACCT && !self.holiday_trains.get(l).copied().unwrap_or(false) { 2 } else { k }
+    }
+
+    /// `rows` from `TrackApi::set_line_rows`' list (per line its id, a count, then that many pairs
+    /// of a local day and its kind of trains).
+    pub fn set_rows(&mut self, packed: &[f64]) {
+        self.rows.clear();
+        let mut i = 0;
+        while i + 1 < packed.len() {
+            let (id, n) = (packed[i] as u32, packed[i + 1] as usize);
+            i += 2;
+            let Some(days) = packed.get(i..i + 2 * n) else { break };
+            i += 2 * n;
+            self.rows.insert(id, days.chunks_exact(2).map(|d| (d[0] as i64, d[1] as u8)).collect());
+        }
     }
     /// Which of a line's train counts a kind of day's account runs (`Service::run_deps_as`): a
     /// weekday's and a superholiday's going-out day the weekdays', a Saturday's and a Sunday's the
@@ -482,12 +523,15 @@ impl Boarding {
     pub fn kind_row(kind: usize) -> usize {
         match kind {
             1 | 2 => WEEKEND,
-            AWAY | BACK => HOLIDAYS,
+            AWAY | BACK | HOLIDAY_ACCT => HOLIDAYS,
             _ => WEEKDAYS,
         }
     }
 
     fn kind(&self, day: usize) -> usize {
+        if day >= HOLIDAY_ACCT {
+            return if self.riders[2].is_empty() { 0 } else { HOLIDAY_ACCT };
+        }
         let day = day.min(DAY_KINDS - 1);
         if !self.riders[day].is_empty() {
             day
@@ -558,22 +602,25 @@ impl Boarding {
     /// clock worker calls it a few lines at a time after new riders, so it never blocks long.
     pub fn ensure_some(&mut self, net: &Network, svc: &Service, max_lines: usize) -> bool {
         let nl = svc.lines.len();
-        for day in 0..DAY_KINDS {
-            self.accounts[day].resize(nl, None);
-            self.accounts[day].truncate(nl);
+        for a in self.accounts.iter_mut() {
+            a.resize(nl, None);
+            a.truncate(nl);
         }
+        self.holiday_trains = (0..nl).map(|l| l < net.line_count() && (0..3).any(|lev| net.line_tph_on(l, HOLIDAYS, lev) != net.line_tph_on(l, WEEKEND, lev))).collect();
         // T-2699: the scan goes on from where the last call stopped, wrapping round, so a round of
         // steps hashes each line about once (from the start every call it hashed lines squared);
         // only a call that finds nothing out of date looks at every line. A line's service hash is
         // the same on every kind of day.
-        let total = DAY_KINDS * nl;
+        let total = ACCOUNTS * nl;
         let mut svc_key: Vec<Option<u64>> = vec![None; nl];
         let mut done = 0;
         for i in 0..total {
             let at = (self.cursor + i) % total;
             let (day, l) = (at / nl, at % nl);
             let ls = &svc.lines[l];
-            let lr = self.riders[day].get(l).and_then(|r| r.as_ref());
+            // the holiday account has the Sunday's riders, only where the holiday trains differ
+            let ri = if day == HOLIDAY_ACCT { 2 } else { day };
+            let lr = self.riders[ri].get(l).and_then(|r| r.as_ref()).filter(|_| day != HOLIDAY_ACCT || self.holiday_trains[l]);
             let ok = ls.running && l < net.line_count() && lr.map_or(false, |r| r.n == ls.stops.len() && r.n >= 2);
             if !ok {
                 self.accounts[day][l] = None;
@@ -582,7 +629,7 @@ impl Boarding {
             let base = *svc_key[l].get_or_insert_with(|| Self::key(net, svc, l));
             let key = {
                 let mut h = Hash(base);
-                h.add(self.generation[day]);
+                h.add(self.generation[ri]);
                 h.0
             };
             if self.accounts[day][l].as_ref().map_or(false, |a| a.key == key) {
@@ -926,7 +973,7 @@ impl Boarding {
 
     /// `line_summary` on a kind of day (T-260).
     pub fn line_summary_day(&self, svc: &Service, l: usize, day: usize) -> Vec<f64> {
-        let Some(Some(acc)) = self.accounts[self.kind(day)].get(l) else { return vec![] };
+        let Some(Some(acc)) = self.accounts[self.kind_for(day, l)].get(l) else { return vec![] };
         let Some(ls) = svc.lines.get(l) else { return vec![] };
         let cap = ls.crush();
         let (mut fullest, mut left, mut wait) = (0.0f64, 0.0f64, 0.0f64);
@@ -1024,7 +1071,7 @@ impl Boarding {
     /// (T-1926), then per period the busiest hour's load on each stretch as a share of the rated
     /// load (`period_peaks`, T-2236: the line panel's crowding). Empty without an account.
     pub fn line_periods(&self, svc: &Service, l: usize, day: usize) -> Vec<f64> {
-        let Some(Some(acc)) = self.accounts[self.kind(day)].get(l) else { return vec![] };
+        let Some(Some(acc)) = self.accounts[self.kind_for(day, l)].get(l) else { return vec![] };
         let Some(ls) = svc.lines.get(l) else { return vec![] };
         let mut out = Self::crowding(acc, ls).concat();
         let n = acc.runs[0].n;
@@ -1302,6 +1349,8 @@ impl Boarding {
             for lr in self.riders[d].iter().flatten() {
                 add("riders", v(lr.board.capacity() + lr.alight.capacity() + lr.come.capacity(), 8));
             }
+        }
+        for d in 0..ACCOUNTS {
             add("accounts", v(self.accounts[d].capacity(), size_of::<Option<LineAccount>>()));
             for acc in self.accounts[d].iter().flatten() {
                 for ra in &acc.runs {

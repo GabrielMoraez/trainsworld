@@ -443,6 +443,8 @@ impl TrackApi {
             }
         }
         self.w.svc.set_cal(cal);
+        // the boarding account reads them too: a public holiday's riders ride the holiday trains
+        self.boarding.set_rows(&packed);
     }
     /// A line's day in the boarding account for its panel (T-230, `Boarding::line_summary`), on
     /// a kind of day (T-260); empty before riders.
