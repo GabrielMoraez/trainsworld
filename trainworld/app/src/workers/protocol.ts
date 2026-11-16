@@ -154,8 +154,8 @@ export type EditOp =
   /** T-625: the line's trains follow a headway in seconds per level (0: no service), or null: counts by hand */
   | { op: "setHeadway"; line: number; seconds: [number, number, number] | null }
   /** a line's trains on weekend days and holidays (`TrackApi.set_line_rest`): weekend high, medium,
-   * low, then holidays', whole-line counts, each at most the weekdays' of its level; null: every day
-   * runs the weekdays'. Undoable */
+   * low, then holidays', whole-line counts, more or fewer than the weekdays'; null: every day runs
+   * the weekdays'. Undoable, and charged for the trains it makes the line need */
   | { op: "lineRest"; line: number; counts: number[] | null }
   /** a field left out keeps the line's own as the worker has it now, so an edit never carries a stale
    * name, colour or symbol over one still on its way (T-1812); `letter` is the symbol set by hand, "" for none */

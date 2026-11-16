@@ -182,8 +182,8 @@ function DayHeading({ row, v }: { row: number; v: Vehicle }) {
   return <tr class="sched-day"><th colSpan={3} data-tip={t("schedule.daySectionTip", { day: k, vehicle: v })}>{t("schedule.daySection", { day: k })}</th></tr>;
 }
 
-/** A level's cells on weekend days (`row` 1) or holidays (2): its count, at most the weekdays'
- * (`restShown`), and the headway it gives at the weekdays' round trip. */
+/** A level's cells on weekend days (`row` 1) or holidays (2): its count (`restShown`), up to what
+ * the track lets run as on weekdays, and the headway it runs, as settled for that kind of day. */
 function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStats; d: Demand; row: number; auto: boolean; limits: (Limit | null)[] }) {
   const v = vehicleOf(st), lev = DEMAND_INDEX[d], i = row * 3 + lev;
   // all nine counts, as the fleet is the most of them (`cars_needed` in sim/src/track/wasm.rs)

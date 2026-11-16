@@ -153,13 +153,16 @@ function changeTrains(id: LineId, demand: Demand, to: (now: number, step: number
 const pendingRest = signal<ReadonlyMap<LineId, number[]>>(new Map());
 
 /** A line's trains on kind of day `row` (1 weekend days, 2 holidays) per level as they show: its own,
- * or the weekdays' where it has none of its own; row 0 the weekdays'. */
+ * or the world's weekday counts where it has none of its own; row 0 the weekdays' as they show. */
 export function restShown(id: LineId, row: number): [number, number, number] | null {
   const wk = trainsShown(id);
   if (!wk || row === 0) return wk;
   const st = world.value?.lineStats[id];
   const own = pendingRest.value.get(id) ?? st?.rest;
-  return wk.map((n, lev) => (own && own.length === 6 ? own[(row - 1) * 3 + lev] : n)) as [number, number, number];
+  if (own && own.length === 6) return [own[(row - 1) * 3], own[(row - 1) * 3 + 1], own[(row - 1) * 3 + 2]];
+  // not a weekday count still on its way: the sim keeps the counts from before it on these days
+  // (`pin_rest`), so the rows do not show the new count and then jump back
+  return st ? ([...st.trainsNeeded] as [number, number, number]) : wk;
 }
 
 /** Step a line's trains for a level on weekend days or holidays (`row` 1 or 2), between none and
