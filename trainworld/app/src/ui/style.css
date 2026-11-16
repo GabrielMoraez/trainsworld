@@ -608,8 +608,12 @@ table.sched th:first-child, table.sched td:first-child { text-align: left; }
 table.sched td { text-align: right; padding: 2px 0; }
 table.sched + .rows { margin-top: 4px; }
 table.sched tr.now td:first-child { font-weight: 700; }
-/* a kind of day's heading row: the sections stack, so the table keeps its three columns */
-table.sched tr.sched-day th { text-align: left; padding: 8px 0 2px; color: var(--text); }
+/* a kind of day's heading row: the sections stack, so the table keeps its three columns. A
+   heading's own size and weight (`.h`) and the room above it part them, not a rule: they are one
+   section (docs/ui-panels.md "Look") */
+table.sched tr.sched-day th { text-align: left; padding: 12px 0 2px; color: var(--text); font-size: 14px; font-weight: 700; }
+table.sched tr.sched-day:nth-child(2) th { padding-top: 4px; }
+table.sched tr.sched-day ~ tr:not(.sched-day) td:first-child { padding-left: 10px; }
 /* T-692: every cell one line; the demand column takes what the others leave and is cut with an ellipsis */
 table.sched th, table.sched td { white-space: nowrap; }
 table.sched th:not(:first-child), table.sched td:not(:first-child) { padding-left: 10px; }
