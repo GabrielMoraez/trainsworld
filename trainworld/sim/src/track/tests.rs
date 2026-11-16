@@ -1380,6 +1380,25 @@ fn a_weekend_count_settles_as_a_weekday_one() {
     }
 }
 
+
+/// A weekend count takes effect on its own edit where the weekday trains fill the track: each kind
+/// of day settles on a service worked out with its own trains, not the weekdays' full track.
+#[test]
+fn a_weekend_count_takes_effect_where_the_weekdays_fill_the_track() {
+    let (mut w, ns) = corridor(31);
+    let id = line(&mut w, &ns, [12.0, 6.0, 3.0]);
+    set_counts(&mut w, id, [400, 6, 3]);
+    let mut d = w.net.line_data(id).unwrap();
+    let mut last = 0.0;
+    for weekend in [6u32, 8, 10, 12] {
+        d.rest = Some([[weekend, 6, 3], [12, 6, 3]]);
+        w.apply(Op::Line { id, data: Some(d.clone()) }).unwrap();
+        let rate = w.net.line_tph_on(id as usize, WEEKEND, HIGH);
+        assert!(rate > last, "{weekend} weekend trains: {rate} an hour, {last} with fewer");
+        last = rate;
+    }
+}
+
 #[test]
 fn sparse_and_reversing_lines_lead_too() {
     // two trains a period on a long line with no night service, and a line reversing at a mid stop

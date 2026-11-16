@@ -428,6 +428,12 @@ impl TrackWorld {
                 for l in 0..n { self.net.line_tph[l] = self.net.line_tph_rest[l][k]; }
             }
             for &(l, c) in &own { self.net.line_trains[l] = Some(c); }
+            // the service (round trips, holds, how full each track is) on that day's trains before
+            // its settle reads it: on the weekdays' a track full on weekdays held every line on it,
+            // so a weekend count raised there took effect only with the next edit
+            let lines: Vec<u32> = (0..n as u32).filter(|&l| self.net.line_ok(l) && self.net.line_trains[l as usize].is_some() && self.svc.lines[l as usize].ok).collect();
+            let d = self.svc.update_scoped(&self.net, &[], &lines, true, Some((&[], &[])));
+            affected.extend(d.recomputed);
             affected.extend(self.settle_day(full));
             for l in 0..n { self.net.line_tph_rest[l][k] = self.net.line_tph[l]; }
             // a loop's counts were made even (as its weekday counts are), which the line keeps

@@ -1129,7 +1129,9 @@ line panel's round-trip split, waiting at busy track among it: [ui-inspectors.md
   holiday counts (`pin_rest` in `wasm/lines.rs`), so a weekday edit leaves the other days as they ran.
   All lines run at once on those days too, so where any line's weekend (or holiday) counts differ
   from its weekday ones, that kind of day is settled on its own after the weekdays'
-  (`TrackWorld::settle_counts` runs `settle_day` with that day's counts in `line_trains`): the same
+  (`TrackWorld::settle_counts` runs `settle_day` with that day's counts in `line_trains`, on a
+  service first worked out again with that day's rates, so a track the weekday trains fill holds
+  no weekend count back): the same
   solve, capacity fill and held trains as a weekday, every line in it, the rates kept in
   `Network::line_tph_rest` (`rest_solved`). That is up to three settles an edit, only while some line
   uses it; the service, round trips and capacity the rest of the game reads are then put back on the
