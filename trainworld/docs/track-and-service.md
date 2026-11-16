@@ -1133,8 +1133,8 @@ line panel's round-trip split, waiting at busy track among it: [ui-inspectors.md
   service first worked out again with that day's rates, so a track the weekday trains fill holds
   no weekend count back): the same
   solve, capacity fill and held trains as a weekday, every line in it, the rates kept in
-  `Network::line_tph_rest` (`rest_solved`). That is up to three settles an edit, only while some line
-  uses it; the service, round trips and capacity the rest of the game reads are then put back on the
+  `Network::line_tph_rest` (`rest_solved`). That is up to three settles an edit once some line's weekday and
+  weekend (or holiday) counts differ, which the first weekday change makes so (`pin_rest`); the service, round trips and capacity the rest of the game reads are then put back on the
   weekdays'. Weekend and holiday departures run their rates at the weekday round trip. Rates equal
   to the weekday ones run the weekday pattern (`Lattice::rest_on` off). The fleet a line needs is
   its most trains on any kind of day at any level (`cars_needed`), so more weekend trains are

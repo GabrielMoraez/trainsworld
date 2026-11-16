@@ -81,3 +81,115 @@ fn more_weekend_trains_are_bought() {
     assert_eq!(a.set_line_rest(id, &[1, 1, 0, 0, 0, 0]), 0, "{}", a.issues());
     assert_eq!(a.cars_needed(), cars, "fewer at the weekend: the weekdays' fleet");
 }
+
+/// Trips over six of local day `day`'s busiest hours, as `trips` gives them, as bits (a trip that
+/// leaves service has NaN for its next departure; the line's local time is New York's, a few hours
+/// behind game time).
+fn day_trips(a: &TrackApi, day: f64) -> Vec<u32> {
+    (0..6).flat_map(|h| a.trips(day * 86400.0 + (14 + h) as f64 * 3600.0)).map(f32::to_bits).collect()
+}
+
+fn saturday_trips(a: &TrackApi) -> Vec<u32> {
+    day_trips(a, 6.0)
+}
+
+/// Trips in a list from `trips` (four numbers each).
+fn count(trips: &[u32]) -> usize {
+    trips.len() / 4
+}
+
+/// Undo and redo of weekend counts move the weekend's rates and trips back and forth to the bit:
+/// the counts ride on a whole-line edit, whose inverse is the line as it was.
+#[test]
+fn weekend_counts_undo_and_redo_to_the_bit() {
+    let (mut a, id) = line_api();
+    let (rest0, sat0) = (a.line_rest(id), saturday_trips(&a));
+    assert_eq!(a.set_line_rest(id, &[6, 2, 2, 2, 2, 2]), 0, "{}", a.issues());
+    let (rates, sat) = (a.line_tph_rest(id), saturday_trips(&a));
+    assert!(count(&sat) > count(&sat0), "{} trips with six weekend trains, {} with two", count(&sat), count(&sat0));
+    assert_eq!(a.undo(), 0);
+    assert_eq!(a.line_rest(id), rest0);
+    assert_eq!(a.w.net.rest_solved, [false, false], "every day back on the weekdays'");
+    assert_eq!(saturday_trips(&a), sat0);
+    assert_eq!(a.redo(), 0);
+    assert_eq!(a.line_rest(id), vec![6, 2, 2, 2, 2, 2]);
+    assert_eq!(a.line_tph_rest(id), rates);
+    assert_eq!(saturday_trips(&a), sat);
+}
+
+/// A save keeps the weekend and holiday counts and their settled rates, so a reload runs the same
+/// trips on a Saturday and on a holiday from the line's calendar (which is not saved: the clock
+/// worker sends it again).
+#[test]
+fn weekend_and_holiday_trips_load_from_a_save_as_they_ran() {
+    let (mut a, id) = line_api();
+    assert_eq!(a.set_line_rest(id, &[6, 2, 2, 4, 2, 0]), 0, "{}", a.issues());
+    // local Tuesday (day 2) a holiday
+    let rows = [id as f64, 3.0, 1.0, 0.0, 2.0, 2.0, 3.0, 0.0];
+    a.set_line_rows(rows.to_vec());
+    let tue = |a: &TrackApi| day_trips(a, 2.0);
+    let (sat, hol) = (saturday_trips(&a), tue(&a));
+    let mut b = TrackApi::new(-73.985, 40.758, true);
+    assert!(b.load(&a.save()));
+    b.set_line_rows(rows.to_vec());
+    assert_eq!(b.w.net.rest_solved, a.w.net.rest_solved);
+    assert_eq!(b.line_tph_rest(id), a.line_tph_rest(id));
+    assert_eq!(saturday_trips(&b), sat, "Saturday");
+    assert_eq!(tue(&b), hol, "the holiday");
+}
+
+/// A line's calendar (`set_line_rows`) makes a weekday a holiday: that day runs the holiday trains,
+/// and taking the holiday off puts the weekday's back.
+#[test]
+fn a_holiday_on_the_lines_calendar_runs_the_holiday_trains() {
+    let (mut a, id) = line_api();
+    assert_eq!(a.set_line_rest(id, &[2, 2, 2, 8, 2, 2]), 0, "{}", a.issues());
+    let tue = |a: &TrackApi| day_trips(a, 2.0);
+    let week = tue(&a);
+    a.set_line_rows(vec![id as f64, 3.0, 1.0, 0.0, 2.0, 2.0, 3.0, 0.0]);
+    let hol = tue(&a);
+    assert!(count(&hol) > count(&week), "{} trips on the holiday, {} on a Tuesday", count(&hol), count(&week));
+    a.set_line_rows(vec![]);
+    assert_eq!(tue(&a), week);
+}
+
+/// A weekday count lowered below the weekend's frees no trains: the weekend still runs them.
+#[test]
+fn a_weekday_cut_below_the_weekend_keeps_the_fleet() {
+    let (mut a, id) = line_api();
+    let two = a.cars_needed();
+    assert_eq!(a.set_line_rest(id, &[6, 2, 2, 2, 2, 2]), 0, "{}", a.issues());
+    let six = a.cars_needed();
+    assert_eq!(six, two * 3);
+    assert_eq!(a.set_train_counts(id, 1, 1, 1), 0, "{}", a.issues());
+    assert_eq!(a.cars_needed(), six, "the weekend's six trains");
+    assert_eq!(a.set_line_rest(id, &[1, 1, 1, 1, 1, 1]), 0, "{}", a.issues());
+    assert_eq!(a.cars_needed(), two / 2, "one train every day");
+}
+
+/// Weekend and holiday counts equal to the weekdays' cost no settle of their own, and give every
+/// day the weekday pattern (`rest_solved` off).
+#[test]
+fn weekend_counts_equal_to_the_weekdays_settle_nothing_more() {
+    let (mut a, id) = line_api();
+    let sat = saturday_trips(&a);
+    assert_eq!(a.set_line_rest(id, &[2, 2, 2, 2, 2, 2]), 0, "{}", a.issues());
+    assert_eq!(a.w.net.line_rest[id as usize], Some([[2, 2, 2]; 2]));
+    assert_eq!(a.w.net.rest_solved, [false, false]);
+    assert!(!a.w.svc.lattice(&a.w.net, id as usize).unwrap().rest_on);
+    assert_eq!(saturday_trips(&a), sat);
+}
+
+/// Removing a line takes its weekend and holiday counts with it, and undo brings them back.
+#[test]
+fn a_removed_line_takes_its_weekend_counts() {
+    let (mut a, id) = line_api();
+    assert_eq!(a.set_line_rest(id, &[6, 2, 2, 4, 2, 2]), 0, "{}", a.issues());
+    assert_eq!(a.remove_line(id), 0, "{}", a.issues());
+    assert_eq!(a.w.net.line_rest[id as usize], None);
+    assert!(a.line_rest(id).is_empty());
+    assert_eq!(a.w.net.rest_solved, [false, false], "no line left with counts of its own");
+    assert_eq!(a.undo(), 0);
+    assert_eq!(a.line_rest(id), vec![6, 2, 2, 4, 2, 2]);
+    assert_eq!(a.w.net.rest_solved, [true, true]);
+}

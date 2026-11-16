@@ -1399,6 +1399,44 @@ fn a_weekend_count_takes_effect_where_the_weekdays_fill_the_track() {
     }
 }
 
+/// A loop's weekend count rounds up to even as its weekday count does (T-798), and the line keeps
+/// the even count, so its two directions run the same trains on a Saturday too.
+#[test]
+fn a_loops_odd_weekend_count_runs_even() {
+    let (mut w, ns) = ring_fixture();
+    let id = line(&mut w, &closed(&ns), [12.0, 6.0, 3.0]);
+    set_counts(&mut w, id, [12, 6, 4]);
+    let mut d = w.net.line_data(id).unwrap();
+    d.rest = Some([[5, 3, 0], [12, 6, 4]]);
+    w.apply(Op::Line { id, data: Some(d) }).unwrap();
+    assert_eq!(w.net.line_rest[id as usize], Some([[6, 4, 0], [12, 6, 4]]));
+    assert_eq!(w.net.rest_solved, [true, false]);
+}
+
+/// A weekend count leaves the weekdays as they ran for every line on the track, not only its own:
+/// the service the rest of the game reads (round trips, holds) is put back on the weekdays' rates,
+/// including for a line whose rates the weekend settle left as they were.
+#[test]
+fn a_weekend_count_leaves_its_neighbours_weekdays() {
+    let (mut w, ns) = corridor(11);
+    let a = line(&mut w, &ns, [12.0, 6.0, 3.0]);
+    let b = line(&mut w, &ns[2..9], [12.0, 6.0, 3.0]);
+    set_counts(&mut w, a, [4, 6, 3]);
+    set_counts(&mut w, b, [4, 6, 3]);
+    let before: Vec<_> = [a, b].iter().map(|&l| (w.net.line_tph[l as usize], w.svc.lines[l as usize].round_trip)).collect();
+    let deps: Vec<_> = (0..2).map(|r| deps_on(&w, a, r, 2)).collect();
+    let mut d = w.net.line_data(b).unwrap();
+    d.rest = Some([[12, 6, 3], [4, 6, 3]]);
+    w.apply(Op::Line { id: b, data: Some(d) }).unwrap();
+    assert!(w.net.rest_solved[0]);
+    assert!(w.net.line_tph_on(b as usize, WEEKEND, HIGH) > 1.5 * w.net.line_tph[b as usize][HIGH], "the weekend runs more of b");
+    let after: Vec<_> = [a, b].iter().map(|&l| (w.net.line_tph[l as usize], w.svc.lines[l as usize].round_trip)).collect();
+    assert_eq!(after, before, "the weekdays' rates and round trips");
+    for r in 0..2 {
+        assert!(same_deps(&deps_on(&w, a, r, 2), &deps[r]), "run {r}: the neighbour's Tuesday changed");
+    }
+}
+
 #[test]
 fn sparse_and_reversing_lines_lead_too() {
     // two trains a period on a long line with no night service, and a line reversing at a mid stop

@@ -13,10 +13,15 @@ import { linesById, restShown, world } from "./world";
 /** A line's trains at level `lev` on its kind of day now in its own local time (weekdays, weekend
  * days or holidays, by its country's calendar; `restShown`). */
 export function trainsNowAt(id: string, lev: number): number {
+  const row = rowNow(id);
+  return row === null ? 0 : restShown(id, row)?.[lev] ?? 0;
+}
+
+/** A line's kind of day now in its own local time (0 weekdays, 1 weekend days, 2 holidays), by its
+ * country's calendar; null without figures. */
+function rowNow(id: string): number | null {
   const w = world.value, st = w?.lineStats[id], l = w ? linesById(w).get(id) : undefined;
-  if (!st || !l) return 0;
-  const row = rowIn(lineCountry(l.stops), Math.floor(lineSeconds(st) / 86400));
-  return restShown(id, row)?.[lev] ?? 0;
+  return st && l ? rowIn(lineCountry(l.stops), Math.floor(lineSeconds(st) / 86400)) : null;
 }
 
 /** The ids of the lines with no trains at their level now (T-1783's test: a train count of 0, or a
@@ -32,7 +37,8 @@ export const idleLines = computed<ReadonlySet<string>>(() => {
       const lev = DEMAND_INDEX[demandAt(lineSeconds(st))];
       // a line whose weekend count is 0 is idle on a Saturday though its weekday count is not
       const n = trainsNowAt(id, lev);
-      if (st.status !== "running" || !(n > 0) || st.autoS?.[lev] === 0) out.add(id);
+      // a headway is the weekdays' alone: a weekend or holiday count runs whatever it says
+      if (st.status !== "running" || !(n > 0) || (st.autoS?.[lev] === 0 && rowNow(id) === 0)) out.add(id);
     }
   }
   // the same ids keep the same set, so a bullet is drawn again only when its line changes

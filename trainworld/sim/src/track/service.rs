@@ -1069,7 +1069,20 @@ impl Service {
         // counts then has too where others' counts change what the shared track lets it run
         let rest_tph: [[f32; LEVELS]; 2] = std::array::from_fn(|k| std::array::from_fn(|lev| net.line_tph_on(l, k + 1, lev)));
         let rest_off = rest_tph.map(|row| std::array::from_fn(|lev| off_of(lev, row[lev])));
-        let rest_phase = rest_tph.map(|row| std::array::from_fn(|lev| phase_of(lev, row[lev])));
+        // T-3333: a twin's phase is pinned half its parent's weekday headway on (`pin_twin_phases`),
+        // which another headway turns into any other share: on these days it is half their own
+        let twin_of = match net.line_twin_of(l as u32) { crate::track::twin::Twin::Of(p) => Some(p as usize), _ => None };
+        let rest_phase: [[f64; LEVELS]; 2] = std::array::from_fn(|k| std::array::from_fn(|lev| {
+            let t = rest_tph[k][lev];
+            match twin_of {
+                Some(p) if t > 0.0 => {
+                    let pt = net.line_tph_on(p, k + 1, lev);
+                    let pp = net.line_phase_of(p as u32)[lev] as f64 + if pt > 0.0 { 1800.0 / pt as f64 } else { 0.0 };
+                    pp.rem_euclid(3600.0 / t as f64)
+                }
+                _ => phase_of(lev, t),
+            }
+        }));
         let cal = self.cal.get(l).copied().unwrap_or(Cal::NONE);
         // rates equal to the weekdays' run the weekdays' pattern, so they keep `rest_on` off and the
         // lattice equal to one read back from a save, whose eras keep no weekend or holiday rates

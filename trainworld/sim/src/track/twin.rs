@@ -273,6 +273,8 @@ impl Network {
 /// two directions, T-798), a headway twice as long.
 pub fn halve(d: &mut LineData) {
     d.trains = d.trains.map(|t| t.map(|x| x.div_ceil(2)));
+    // the weekend and holiday counts are one pair's too, or each pair would run the whole line's
+    d.rest = d.rest.map(|r| r.map(|t| t.map(|x| x.div_ceil(2))));
     d.tph = d.tph.map(|t| t / 2.0);
     d.auto = d.auto.map(|a| a.map(|h| h * 2));
 }
@@ -280,6 +282,7 @@ pub fn halve(d: &mut LineData) {
 /// The whole line's trains from one pair's: `halve` undone (an odd count stays even).
 pub fn double(d: &mut LineData) {
     d.trains = d.trains.map(|t| t.map(|x| x * 2));
+    d.rest = d.rest.map(|r| r.map(|t| t.map(|x| x * 2)));
     d.tph = d.tph.map(|t| t * 2.0);
     d.auto = d.auto.map(|a| a.map(|h| h / 2));
 }

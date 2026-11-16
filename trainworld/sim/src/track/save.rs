@@ -1031,6 +1031,9 @@ pub fn decode_read(bytes: &[u8]) -> Result<(Network, usize), String> {
         }
         let solved = r.u()?;
         for k in (0..2).filter(|&k| solved >> k & 1 == 1) {
+            // only lines with counts have rates written: one without runs its weekday rates, as no
+            // settle moves it
+            for i in 0..n_lines { net.line_tph_rest[i][k] = net.line_tph[i]; }
             for _ in 0..r.u()? {
                 let i = r.u()? as usize;
                 let rates = [r.u()? as u32, r.u()? as u32, r.u()? as u32].map(f32::from_bits);
