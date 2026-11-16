@@ -274,6 +274,11 @@ pub struct Cal {
 
 impl Cal {
     pub const NONE: Cal = Cal { day0: 0, rows: [CAL_WEEK; CAL_DAYS] };
+    /// Every day around local day `day` of kind `row`, as if the line ran that kind of day for a
+    /// while (`Service::run_deps_as`).
+    pub fn all(day: i64, row: usize) -> Cal {
+        Cal { day0: day - 2, rows: [row.min(HOLIDAYS) as u8; CAL_DAYS] }
+    }
     /// The kind of local day `day` (`params::WEEKDAYS`, `WEEKEND`, `HOLIDAYS`).
     pub fn row(&self, day: i64) -> usize {
         let k = day - self.day0;
@@ -1334,7 +1339,22 @@ impl Service {
     /// after the last, the line's own. The boarding account uses it too, so its departures are the
     /// drawn ones to the bit.
     pub fn run_deps(&self, net: &Network, l: usize, r: usize, a: f64, b: f64, out: &mut Vec<Trip>) {
-        let Some(cur) = self.lattice(net, l) else { return };
+        self.run_deps_as(net, l, r, a, b, None, out)
+    }
+
+    /// `run_deps`, with every day from `a` to `b` of kind `row` (`params::WEEKDAYS`, `WEEKEND`,
+    /// `HOLIDAYS`) when given, whatever the line's calendar says: the boarding account runs each
+    /// kind of day's trains on one reference day (`Boarding::kind_row`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_deps_as(&self, net: &Network, l: usize, r: usize, a: f64, b: f64, row: Option<usize>, out: &mut Vec<Trip>) {
+        let Some(mut cur) = self.lattice(net, l) else { return };
+        let ls0 = &self.lines[l];
+        let as_row = |lat: &Lattice| -> Lattice {
+            let mut x = *lat;
+            if let Some(row) = row { x.cal = Cal::all(((a + ls0.shift) / 86400.0).floor() as i64, row); }
+            x
+        };
+        cur = as_row(&cur);
         let ls = &self.lines[l];
         let eras = self.eras_of(l);
         let shifts = self.shifts.get(l).map_or(&[][..], |v| &v[..]);
@@ -1342,7 +1362,8 @@ impl Service {
         let mut last: Option<f64> = None;
         let mut buf: Vec<(f64, u8, f64)> = vec![];
         for i in 0..=eras.len() {
-            let (lat, seg_end) = if i < eras.len() { (&eras[i].lat, eras[i].until) } else { (&cur, f64::INFINITY) };
+            let era = if i < eras.len() { as_row(&eras[i].lat) } else { cur };
+            let (lat, seg_end) = (&era, if i < eras.len() { eras[i].until } else { f64::INFINITY });
             // an era is followed by another pattern, whose first departures need its last one
             let lo = if i < eras.len() { seg_start.max(a.min(seg_end - ERA_LOOKBACK_S)) } else { seg_start.max(a) };
             let hi = if i < eras.len() { seg_end } else { b };

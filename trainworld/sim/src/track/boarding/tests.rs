@@ -948,3 +948,27 @@ fn a_long_lines_opening_day_runs_as_full_as_the_next() {
     assert!(today[5] < 1.0, "{} left behind", today[5]);
     assert!(today[3] > 0.0 && today[3] < 2.0 * 3600.0 * rate as f64 * 2.0 * (n - 1) as f64 / 3600.0, "{} riders", today[3]);
 }
+
+/// A kind of day's account runs that day's trains (`Boarding::kind_row`): a Saturday's crowding is
+/// over the line's weekend trains, more than its weekday ones here (below the track's limit).
+#[test]
+fn a_saturdays_crowding_is_on_the_weekend_trains() {
+    use crate::track::world::Op;
+    let (mut w, l) = setup(10.0);
+    let tph = w.net.line_tph[l as usize];
+    w.apply(Op::TrainCounts { id: l, trains: Some([2, 2, 2]), tph }).unwrap();
+    let mut d = w.net.line_data(l).unwrap();
+    d.rest = Some([[3, 2, 2], [2, 2, 2]]);
+    w.apply(Op::Line { id: l, data: Some(d) }).unwrap();
+    let mut b = Boarding::default();
+    b.set_riders_day(&riders(l, [500.0, 200.0, 500.0, 200.0, 50.0]), 0);
+    b.set_riders_day(&riders(l, [500.0, 200.0, 500.0, 200.0, 50.0]), 1);
+    b.ensure(&w.net, &w.svc);
+    let trains = |day: usize| {
+        let v = b.line_periods(&w.svc, l as usize, day);
+        (0..PERIODS).map(|p| v[p * PERIOD_STRIDE]).sum::<f64>()
+    };
+    assert!(w.net.line_tph_on(l as usize, WEEKEND, 0) > 1.3 * w.net.line_tph[l as usize][0], "below the track's limit");
+    let (mon, sat) = (trains(0), trains(1));
+    assert!(sat > 1.15 * mon, "{sat} trains on a Saturday, {mon} on a weekday");
+}

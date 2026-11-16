@@ -176,19 +176,22 @@ export function stepRest(id: LineId, row: number, demand: Demand, by: number, mo
  * shorter), by the weekdays' headway steps (`nextHeadway`), to the count that keeps it at the
  * weekdays' round trip `trip` (`autoTrainsFor`). The sim keeps counts, not headways, for these days,
  * so a headway that needs the same count is stepped past. */
-export function stepRestHeadway(id: LineId, row: number, demand: Demand, dir: number, trip: number, limitS: number, loop: boolean, most: number): boolean {
+export function stepRestHeadway(id: LineId, row: number, demand: Demand, dir: number, trip: number, limitS: number, loop: boolean, most: number, shown: number): boolean {
   const n = restShown(id, row)?.[DEMAND_INDEX[demand]];
-  const step = n === undefined ? null : restHeadwayStep(n, dir, trip, limitS, loop);
+  const step = n === undefined ? null : restHeadwayStep(n, dir, trip, limitS, loop, shown);
   return step !== null && setRest(id, row, demand, step.to, most);
 }
 
 /** Where a weekend or holiday headway step (`stepRestHeadway`) goes from `n` trains: the count and
  * the headway it was stepped to (0 none); null where it cannot step. `dir`'s size is minutes a step,
- * as the weekdays' (Shift, Ctrl). Its stepper's hovers read it too, so they name what a click sets. */
-export function restHeadwayStep(n: number, dir: number, trip: number, limitS: number, loop: boolean): { to: number; h: number } | null {
+ * as the weekdays' (Shift, Ctrl). Its stepper's hovers read it too, so they name what a click sets.
+ * It steps from `shown`, the headway the row shows (the rate settled for that day, which a full
+ * track or held trains make longer than the round trip over the count): from the shorter one, + could
+ * land below what is shown and read backwards. */
+export function restHeadwayStep(n: number, dir: number, trip: number, limitS: number, loop: boolean, shown: number): { to: number; h: number } | null {
   if (trip <= 0 || dir === 0) return null;
   const up = dir > 0;
-  let h = n > 0 ? trip / n : 0;
+  let h = shown > 0 ? shown : n > 0 ? trip / n : 0;
   for (let i = 0; i < 60; i++) {
     h = nextHeadway(h, Math.sign(dir), Math.abs(dir));
     // the shortest headway's step down is no service, which is the wrong way for more trains

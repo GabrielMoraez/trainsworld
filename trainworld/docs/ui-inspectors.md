@@ -291,8 +291,10 @@ purpose filter the purpose drawn is ringed in the bar.
   Holidays hold steppers of the line's counts on those days (`RestCells`, `stepRest` in
   `game/world.ts`), from none to the most the track lets run as on weekdays (`trainCap`), typed and
   jumped as theirs, every hover the Weekdays row's (the track's limit; a headway past it red with its
-  wait; under headways the count's round trip), but the level's name, whose crowding is the weekday
-  trains' riders, gives its hours alone; every − and + in the table, on all three kinds of day, has
+  wait; under headways the count's round trip); each section's level names carry the crowding dot
+  and hover of its own kind of day (today's in today's section, else a weekday's, a Saturday's and a
+  Sunday's, `linePeriods`); under headways the Weekend and Holidays headway steps from the headway
+  shown (`restHeadwayStep`); every − and + in the table, on all three kinds of day, has
   one hover: what the click sets ("11 trains", a headway's "12 trains, one every 5 min",
   `schedule.stepEvery`), then what it buys, takes from the depot or frees, counting every kind of
   day as the fleet is the most of them (`changeTip`), then the Shift and Ctrl jumps,

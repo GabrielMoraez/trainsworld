@@ -203,7 +203,7 @@ function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStat
     const lim = limit?.s ?? 0, h = tph > 0 ? 3600 / tph : 0;
     const short = limit !== null && h > 0 && h * AUTO_SLACK < limit.s;
     const stepTip = (dir: number) => {
-      const s = restHeadwayStep(n, dir, trip, lim, loop);
+      const s = restHeadwayStep(n, dir, trip, lim, loop, h);
       return s === null ? undefined : changeTip(all, i, Math.min(s.to, most), st, s.h);
     };
     return (
@@ -217,7 +217,7 @@ function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStat
         <td>
           <Stepper wide jump jumpUnit={t("schedule.minUnit")} label={t("schedule.restHeadwayLabel", { day: DAY_SECTIONS[row] })}
             value={short ? <span class="bad">{headwayText(h)}</span> : headwayText(h)}
-            onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, lim, loop, most)}
+            onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, lim, loop, most, h)}
             tipDown={stepTip(-1)} tipUp={stepTip(1)} />
         </td>
       </>
@@ -271,7 +271,15 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
   // T-2661: the crowding bar in a level's hover reads west to east
   const w = world.value, flip = !!w && lineReversed(l, w, !!st.loop);
   // the same level is in force in all three sections, so only today's kind of day bolds it
-  const today = rowIn(lineCountry(l.stops), Math.floor(lineSeconds(st) / 86400));
+  const country = lineCountry(l.stops), day = Math.floor(lineSeconds(st) / 86400);
+  const today = rowIn(country, day);
+  // T-1677: each section's crowding dots are its own kind of day's (game/days.ts): today's in
+  // today's section (`crowd`, which the panel asked for), else a weekday, a Saturday and a Sunday,
+  // as a public holiday runs; one ask per section, a fixed three so the hooks hold
+  const todayKind = kindIn(country, day), acct = accountVersion.value;
+  const kindOfRow = (row: number) => (row === today ? todayKind : ([0, 1, 2] as const)[row]);
+  const asked = [0, 1, 2].map((row) => useClockQuery(row !== today ? { what: "linePeriods", line: l.num, day: kindOfRow(row) } : null, [l.num, w?.version, acct, kindOfRow(row), row !== today], (x) => (x.length ? x : null)) ?? null);
+  const crowdOf = (row: number) => (row === today ? crowd : asked[row]);
   return (
     <>
       <div class={label ? "h set-by" : "h"}>
@@ -296,27 +304,23 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
           <th>{manyCap(v)}</th>
           <th>{t("schedule.headway")}</th>
         </tr>
-        <DayHeading row={0} v={v} />
-        {DEMANDS.map((d) => {
-          // T-1783: no dot on a level with no vehicles
-          const dot = st.status === "running" && (trainsShown(l.id) ?? st.trainsNeeded)[DEMAND_INDEX[d]] > 0;
-          const p = dot && crowd && lineFiguresIn(demandView.value, l.id, stops) ? crowd : null;
-          return (
-            <tr class={d === now && today === 0 ? "now" : ""}>
-              <td><LevelName v={p} d={d} stops={stops} flip={flip} ends={endNames(l)} vehicle={vehicleOf(st)} pending={dot && !p && demandPending.value} /></td>
-              <LevelCells l={l} st={st} d={d} auto={auto} limits={limits} />
-            </tr>
-          );
-        })}
-        {[1, 2].map((row) => (
+        {[0, 1, 2].map((row) => (
           <>
             <DayHeading row={row} v={v} />
-            {DEMANDS.map((d) => (
-              <tr class={d === now && today === row ? "now" : ""}>
-                <td><span data-tip={levelTimes(d)}>{demandLabel(d)}</span></td>
-                <RestCells l={l} st={st} d={d} row={row} auto={auto !== null} limits={limits} />
-              </tr>
-            ))}
+            {DEMANDS.map((d) => {
+              // T-1783: no dot on a level with no vehicles that day
+              const dot = st.status === "running" && (restShown(l.id, row) ?? st.trainsNeeded)[DEMAND_INDEX[d]] > 0;
+              const c = crowdOf(row);
+              const p = dot && c && lineFiguresIn(demandView.value, l.id, stops) ? c : null;
+              return (
+                <tr class={d === now && today === row ? "now" : ""}>
+                  <td><LevelName v={p} d={d} stops={stops} flip={flip} ends={endNames(l)} vehicle={vehicleOf(st)} pending={dot && !p && demandPending.value} /></td>
+                  {row === 0
+                    ? <LevelCells l={l} st={st} d={d} auto={auto} limits={limits} />
+                    : <RestCells l={l} st={st} d={d} row={row} auto={auto !== null} limits={limits} />}
+                </tr>
+              );
+            })}
           </>
         ))}
       </table>

@@ -63,7 +63,9 @@ would crowd less). **Each kind of day runs its own trains**: each level in its o
 medium 20-24, low 0-6, every day, at the line's count for the kind of day (weekdays, weekend days,
 holidays; [track-and-service.md](track-and-service.md) "Scheduling"), the weekdays' unless the line
 has its own. The boarding account works out a
-weekend day's crowding from its scaled riders on that day's trains, and running cost follows them.
+weekend day's crowding from its scaled riders on that day's trains (each kind of day's account runs
+its kind's trains whatever day it starts on, `Boarding::kind_row`: a Saturday and a Sunday the
+weekend's, a superholiday's days away and back the holidays'), and running cost follows them.
 The solve is a weekday's, on the weekday counts; weekend and holiday riders are still scaled from it,
 so fewer weekend trains crowd them rather than lose them, and more carry them in more room but win
 no riders. **A superholiday's day away** (T-264) is a fourth kind,
