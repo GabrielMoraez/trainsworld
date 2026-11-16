@@ -22,7 +22,7 @@ import { DEMAND_INDEX, DEMANDS, loopHalves, type Demand, type LineInput, type Li
 import { pendingLabel } from "../../game/lineFigures";
 import { liveMoney, moneyState, type MoneyState } from "../../game/money";
 import { demandView, lineFiguresIn } from "../../game/demand";
-import { AUTO_SLACK, autoTrainsFor, headwayFromMinutes, headwayShown, nextHeadway, refusedForCash, restShown, setAutoTrains, setHeadway, setTrainCount, stepHeadway, stepRest, stepRestHeadway, stepTrainCount, trainCap, trainsShown, world, MAX_TYPED_VEHICLES } from "../../game/world";
+import { AUTO_SLACK, autoTrainsFor, headwayFromMinutes, headwayShown, nextHeadway, refusedForCash, restShown, setAutoTrains, setHeadway, setRest, setTrainCount, stepHeadway, stepRest, stepRestHeadway, restHeadwayStep, stepTrainCount, trainCap, trainsShown, world, MAX_TYPED_VEHICLES } from "../../game/world";
 import { Row, Segmented, Stepper } from "../widgets";
 import { demandPending, Spinner } from "../Spinner";
 
@@ -195,28 +195,50 @@ function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStat
   // a count still on its way shows the rate it will run, as a weekday count does (T-1276)
   const ran = st.rest ? st.rest[i - 3] : st.trainsNeeded[lev];
   const tph = n === ran && st.restTph ? st.restTph[i - 3] : trip > 0 ? (n * 3600) / trip : 0;
-  const k = loopHalves(st) ? 2 : 1;
-  const down = changeTip(all, i, Math.max(0, n - k), st);
-  const up = n >= most && limit !== null && most < MAX_TYPED_VEHICLES ? limitText(limit, v) : changeTip(all, i, n + k, st);
+  const loop = loopHalves(st), k = loop ? 2 : 1;
+  // every hover as the weekdays' row's (`LevelCells`), on this day's count
   if (auto) {
-    // under headways, as the weekdays' rows: the headway is stepped and the count follows it
+    // under headways the headway is stepped and the count follows it
+    const lim = limit?.s ?? 0, h = tph > 0 ? 3600 / tph : 0;
+    const short = limit !== null && h > 0 && h * AUTO_SLACK < limit.s;
+    const stepTip = (dir: number) => {
+      const to = restHeadwayStep(n, dir, trip, lim, loop);
+      return to === null ? undefined : changeTip(all, i, Math.min(to, most), st);
+    };
     return (
       <>
-        <td>{n}</td>
         <td>
-          <Stepper wide label={t("schedule.restHeadwayLabel", { day: DAY_SECTIONS[row] })} value={headwayText(tph > 0 ? 3600 / tph : 0)}
-            onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, limit?.s ?? 0, k === 2, most)} />
+          <span class="num" data-tip={loop
+            ? t("schedule.lapTip", { vehicles: vehiclesText(v, n), half: n / 2, lap: duration(trip / 2) })
+            : st.loop ? t("schedule.lapOneWayTip", { vehicles: vehiclesText(v, n), lap: duration(trip) })
+            : t("schedule.roundTip", { vehicles: vehiclesText(v, n), trip: duration(trip) })}>{n}</span>
+        </td>
+        <td>
+          <Stepper wide label={t("schedule.restHeadwayLabel", { day: DAY_SECTIONS[row] })}
+            value={short ? <span class="bad">{headwayText(h)}</span> : headwayText(h)}
+            onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, lim, loop, most)}
+            tipDown={stepTip(-1)} tipUp={stepTip(1)} />
         </td>
       </>
     );
   }
+  const over = limit !== null && n > 0 && n - trip / limit.s > 0.01;
+  const full = n >= most;
   return (
     <>
       <td>
-        <Stepper value={n} label={t("schedule.restLabel", { day: DAY_SECTIONS[row], vehicle: v })}
-          onStep={(s) => stepRest(l.id, row, d, s, most)} tipDown={down} tipUp={up} />
+        <Stepper value={n} label={t("schedule.restLabel", { day: DAY_SECTIONS[row], vehicle: v })} jump
+          onStep={(s) => (s > 0 ? !full && setRest(l.id, row, d, n + s * k, most) : stepRest(l.id, row, d, s, most))}
+          type={{ text: String(n), set: (x) => {
+            const to = Math.max(0, Math.round(x));
+            if (to === n) return;
+            if (to < n) { setRest(l.id, row, d, to, most); return; }
+            return !full && setRest(l.id, row, d, to, most) && to <= most ? undefined : false;
+          } }}
+          tipDown={changeTip(all, i, Math.max(0, n - k), st)}
+          tipUp={full && limit !== null && most < MAX_TYPED_VEHICLES ? limitText(limit, v) : changeTip(all, i, n + k, st)} />
       </td>
-      <td>{headway(tph)}</td>
+      <td>{over ? <span class="bad" data-tip={t("schedule.limitWait", { text: limitText(limit, v), vehicle: v })}>{headway(tph)}</span> : headway(tph)}</td>
     </>
   );
 }

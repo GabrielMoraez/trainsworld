@@ -178,22 +178,29 @@ export function stepRest(id: LineId, row: number, demand: Demand, by: number, mo
  * so a headway that needs the same count is stepped past. */
 export function stepRestHeadway(id: LineId, row: number, demand: Demand, dir: number, trip: number, limitS: number, loop: boolean, most: number): boolean {
   const n = restShown(id, row)?.[DEMAND_INDEX[demand]];
-  if (n === undefined || trip <= 0) return false;
+  const to = n === undefined ? null : restHeadwayStep(n, dir, trip, limitS, loop);
+  return to !== null && setRest(id, row, demand, to, most);
+}
+
+/** The count a weekend or holiday headway step (`stepRestHeadway`) goes to from `n` trains; null
+ * where it cannot step. Its stepper's hovers read it too, so they name the count a click sets. */
+export function restHeadwayStep(n: number, dir: number, trip: number, limitS: number, loop: boolean): number | null {
+  if (trip <= 0) return null;
   let h = n > 0 ? trip / n : 0;
   for (let i = 0; i < 60; i++) {
     h = nextHeadway(h, dir);
     // the shortest headway's step down is no service, which is the wrong way for more trains
-    if (h <= 0) return dir > 0 && setRest(id, row, demand, 0, most);
+    if (h <= 0) return dir > 0 && n > 0 ? 0 : null;
     const to = autoTrainsFor(trip, h, limitS, loop);
-    if (dir > 0 ? to < n : to > n) return setRest(id, row, demand, to, most);
-    if (h >= HEADWAY_MAX_S) return dir > 0 && setRest(id, row, demand, 0, most);
+    if (dir > 0 ? to < n : to > n) return to;
+    if (h >= HEADWAY_MAX_S) return dir > 0 && n > 0 ? 0 : null;
   }
-  return false;
+  return null;
 }
 
 /** Set a line's trains for a level on weekend days or holidays (`row` 1 or 2), kept between none
  * and `most`; false when that changes nothing (the stepper shakes). */
-function setRest(id: LineId, row: number, demand: Demand, want: number, most: number): boolean {
+export function setRest(id: LineId, row: number, demand: Demand, want: number, most: number): boolean {
   if (!trainsShown(id) || (row !== 1 && row !== 2)) return false;
   const all = [...restShown(id, 1)!, ...restShown(id, 2)!];
   const i = (row - 1) * 3 + DEMAND_INDEX[demand];
