@@ -290,10 +290,12 @@ purpose filter the purpose drawn is ringed in the bar.
   holds the line's weekday counts (or, under headways, the counts the headway gives); Weekend and
   Holidays hold steppers of the line's counts on those days (`RestCells`, `stepRest` in
   `game/world.ts`), from none to the most the track lets run as on weekdays (`trainCap`), typed and
-  jumped as theirs, every hover the Weekdays row's (the trains a step buys or frees, counting every
-  kind of day as the fleet is the most of them; the track's limit; a headway past it red with its
+  jumped as theirs, every hover the Weekdays row's (the track's limit; a headway past it red with its
   wait; under headways the count's round trip), but the level's name, whose crowding is the weekday
-  trains' riders, gives its hours alone,
+  trains' riders, gives its hours alone; every − and + in the table, on all three kinds of day, has
+  one hover: what the click sets ("11 trains", a headway's "12 trains, one every 5 min",
+  `schedule.stepEvery`), then what it buys, takes from the depot or frees, counting every kind of
+  day as the fleet is the most of them (`changeTip`), then the Shift and Ctrl jumps,
   showing the weekday counts until one is set, and the headway each runs (`LineStats.restTph`, as
   settled for that kind of day); under headways those rows step the headway instead, by the weekday steps, to
   the count that keeps it (`stepRestHeadway`), the count shown beside it; the level in force now is bold in the section of the line's kind of day today;

@@ -69,9 +69,10 @@ function stockOf(m: MoneyState, st: LineStats, v: Vehicle): { unit: (n: number) 
 /** What a stepper's button leads to: the vehicle count, and for a running line what it needs beyond
  * its busiest level, bought unless the depot has spare ones, or what it frees, which stays owned for
  * any line to use. */
-function changeTip(counts: readonly number[], lev: number, to: number, st: LineStats): string {
+function changeTip(counts: readonly number[], lev: number, to: number, st: LineStats, every?: number): string {
   const v = vehicleOf(st);
-  const head = vehiclesText(v, to);
+  // a headway button names the headway it sets with the count, a count button the count
+  const head = !every ? vehiclesText(v, to) : t("schedule.stepEvery", { vehicles: vehiclesText(v, to), time: headwayText(every) });
   const m = moneyState.value;
   const k = m && st.status === "running" ? stockOf(m, st, v) : null;
   if (!k) return head;
@@ -165,8 +166,8 @@ function LevelCells({ l, st, d, auto, limits }: { l: LineInput; st: LineStats; d
       </td>
       <td>
         {wrap(<Stepper wide jump jumpUnit={t("schedule.minUnit")} label={t("schedule.headwayLabel")} value={short ? <span class="bad">{headwayText(auto[lev])}</span> : headwayText(auto[lev])} onStep={(s) => stepHeadway(l.id, d, s)}
-          tipDown={changeTip(fleetCounts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], -1), lim, loop), st)}
-          tipUp={changeTip(fleetCounts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], 1), lim, loop), st)}
+          tipDown={changeTip(fleetCounts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], -1), lim, loop), st, nextHeadway(auto[lev], -1))}
+          tipUp={changeTip(fleetCounts, lev, autoTrainsFor(trip, nextHeadway(auto[lev], 1), lim, loop), st, nextHeadway(auto[lev], 1))}
           type={{ text: auto[lev] ? String(+(auto[lev] / 60).toFixed(2)) : "0", set: (v) => setHeadway(l.id, d, headwayFromMinutes(v)), tip: short ? t("schedule.limitWait", { text: limitText(limit, v), vehicle: v }) : undefined }} />)}
       </td>
     </>
@@ -202,8 +203,8 @@ function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStat
     const lim = limit?.s ?? 0, h = tph > 0 ? 3600 / tph : 0;
     const short = limit !== null && h > 0 && h * AUTO_SLACK < limit.s;
     const stepTip = (dir: number) => {
-      const to = restHeadwayStep(n, dir, trip, lim, loop);
-      return to === null ? undefined : changeTip(all, i, Math.min(to, most), st);
+      const s = restHeadwayStep(n, dir, trip, lim, loop);
+      return s === null ? undefined : changeTip(all, i, Math.min(s.to, most), st, s.h);
     };
     return (
       <>
@@ -214,7 +215,7 @@ function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStat
             : t("schedule.roundTip", { vehicles: vehiclesText(v, n), trip: duration(trip) })}>{n}</span>
         </td>
         <td>
-          <Stepper wide label={t("schedule.restHeadwayLabel", { day: DAY_SECTIONS[row] })}
+          <Stepper wide jump jumpUnit={t("schedule.minUnit")} label={t("schedule.restHeadwayLabel", { day: DAY_SECTIONS[row] })}
             value={short ? <span class="bad">{headwayText(h)}</span> : headwayText(h)}
             onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, lim, loop, most)}
             tipDown={stepTip(-1)} tipUp={stepTip(1)} />

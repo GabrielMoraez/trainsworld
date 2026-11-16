@@ -178,22 +178,24 @@ export function stepRest(id: LineId, row: number, demand: Demand, by: number, mo
  * so a headway that needs the same count is stepped past. */
 export function stepRestHeadway(id: LineId, row: number, demand: Demand, dir: number, trip: number, limitS: number, loop: boolean, most: number): boolean {
   const n = restShown(id, row)?.[DEMAND_INDEX[demand]];
-  const to = n === undefined ? null : restHeadwayStep(n, dir, trip, limitS, loop);
-  return to !== null && setRest(id, row, demand, to, most);
+  const step = n === undefined ? null : restHeadwayStep(n, dir, trip, limitS, loop);
+  return step !== null && setRest(id, row, demand, step.to, most);
 }
 
-/** The count a weekend or holiday headway step (`stepRestHeadway`) goes to from `n` trains; null
- * where it cannot step. Its stepper's hovers read it too, so they name the count a click sets. */
-export function restHeadwayStep(n: number, dir: number, trip: number, limitS: number, loop: boolean): number | null {
-  if (trip <= 0) return null;
+/** Where a weekend or holiday headway step (`stepRestHeadway`) goes from `n` trains: the count and
+ * the headway it was stepped to (0 none); null where it cannot step. `dir`'s size is minutes a step,
+ * as the weekdays' (Shift, Ctrl). Its stepper's hovers read it too, so they name what a click sets. */
+export function restHeadwayStep(n: number, dir: number, trip: number, limitS: number, loop: boolean): { to: number; h: number } | null {
+  if (trip <= 0 || dir === 0) return null;
+  const up = dir > 0;
   let h = n > 0 ? trip / n : 0;
   for (let i = 0; i < 60; i++) {
-    h = nextHeadway(h, dir);
+    h = nextHeadway(h, Math.sign(dir), Math.abs(dir));
     // the shortest headway's step down is no service, which is the wrong way for more trains
-    if (h <= 0) return dir > 0 && n > 0 ? 0 : null;
+    if (h <= 0) return up && n > 0 ? { to: 0, h: 0 } : null;
     const to = autoTrainsFor(trip, h, limitS, loop);
-    if (dir > 0 ? to < n : to > n) return to;
-    if (h >= HEADWAY_MAX_S) return dir > 0 && n > 0 ? 0 : null;
+    if (up ? to < n : to > n) return { to, h };
+    if (h >= HEADWAY_MAX_S) return up && n > 0 ? { to: 0, h: 0 } : null;
   }
   return null;
 }

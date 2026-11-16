@@ -1699,6 +1699,7 @@
   "schedule.daySectionTip": "{day, select, weekdays {{vehicle, select, train {Trains} tram {Trams} bus {Buses} other {Boats}} on weekdays} weekend {{vehicle, select, train {Trains} tram {Trams} bus {Buses} other {Boats}} on weekend days} other {{vehicle, select, train {Trains} tram {Trams} bus {Buses} other {Boats}} on holidays}}",
   "schedule.restLabel": "{day, select, weekend {{vehicle, select, train {trains} tram {trams} bus {buses} other {boats}} on weekend days} other {{vehicle, select, train {trains} tram {trams} bus {buses} other {boats}} on holidays}}",
   "schedule.restHeadwayLabel": "{day, select, weekend {Headway on weekend days} other {Headway on holidays}}",
+  "schedule.stepEvery": "{vehicles}, one every {time}",
   "schedule.demandName": "{demand, select, high {High} medium {Medium} other {Low}}",
   "schedule.departedFull": "{full}/{all} {vehicle, select, train {trains} tram {trams} bus {buses} other {boats}} departed full.",
   "schedule.frees": "Frees {unit}",
