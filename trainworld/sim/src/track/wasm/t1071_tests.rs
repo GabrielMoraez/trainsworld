@@ -56,3 +56,16 @@ fn a_count_change_with_a_lead_takes_effect_then_and_saves_with_its_eras() {
     assert!(b.w.svc.eras.iter().all(|e| e.is_empty()));
     assert_eq!(b.save(), save::encode(&b.w.net));
 }
+
+/// A weekday count change leaves the weekend and holiday counts as they ran: a line still running
+/// its weekday trains every day keeps the old ones on those days (`pin_rest`).
+#[test]
+fn a_weekday_change_leaves_the_weekend_and_holidays() {
+    let (mut a, id) = line_api();
+    assert!(a.line_rest(id).is_empty(), "a new line runs its weekday trains every day");
+    assert_eq!(a.set_train_counts(id, 4, 2, 2), 0, "{}", a.issues());
+    assert_eq!(a.line_rest(id), vec![2, 2, 2, 2, 2, 2], "the weekend and holidays keep 2");
+    assert_eq!(a.set_line_rest(id, &[1, 1, 0, 2, 1, 1]), 0, "{}", a.issues());
+    assert_eq!(a.set_train_counts(id, 6, 3, 2), 0, "{}", a.issues());
+    assert_eq!(a.line_rest(id), vec![1, 1, 0, 2, 1, 1], "counts of its own are left as set");
+}

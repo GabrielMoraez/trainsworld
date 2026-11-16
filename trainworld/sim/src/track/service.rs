@@ -1067,7 +1067,10 @@ impl Service {
         let rest_off = rest_tph.map(|row| std::array::from_fn(|lev| off_of(lev, row[lev])));
         let rest_phase = rest_tph.map(|row| std::array::from_fn(|lev| phase_of(lev, row[lev])));
         let cal = self.cal.get(l).copied().unwrap_or(Cal::NONE);
-        Some(Lattice { tph, off, lead, shift: ls.shift, phase, rest_tph, rest_off, rest_phase, rest_on: rest.is_some(), cal })
+        // counts equal to the weekdays' run the weekdays' pattern, so they keep `rest_on` off and the
+        // lattice equal to one read back from a save, which has no weekend or holiday rates
+        let rest_on = rest.is_some() && (rest_tph != [tph; 2] || rest_off != [off; 2] || rest_phase != [phase; 2]);
+        Some(Lattice { tph, off, lead, shift: ls.shift, phase, rest_tph, rest_off, rest_phase, rest_on, cal })
     }
 
     /// Every line's local time again, after the time zone table changed (T-309).

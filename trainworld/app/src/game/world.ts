@@ -163,19 +163,43 @@ export function restShown(id: LineId, row: number): [number, number, number] | n
 }
 
 /** Step a line's trains for a level on weekend days or holidays (`row` 1 or 2), between none and
- * the weekdays' count; false when it cannot move (the stepper shakes). Back to every count equal to
- * the weekdays', the line has none of its own. */
+ * the weekdays' count; false when it cannot move (the stepper shakes). */
 export function stepRest(id: LineId, row: number, demand: Demand, by: number): boolean {
+  const n = restShown(id, row)?.[DEMAND_INDEX[demand]];
+  return n !== undefined && setRest(id, row, demand, n + by * trainStep(id));
+}
+
+/** Step the headway a line's weekend or holiday count gives at a level (`dir` 1 longer, -1
+ * shorter), by the weekdays' headway steps (`nextHeadway`), to the count that keeps it at the
+ * weekdays' round trip `trip` (`autoTrainsFor`). The sim keeps counts, not headways, for these days,
+ * so a headway that needs the same count is stepped past. */
+export function stepRestHeadway(id: LineId, row: number, demand: Demand, dir: number, trip: number, limitS: number, loop: boolean): boolean {
+  const n = restShown(id, row)?.[DEMAND_INDEX[demand]];
+  if (n === undefined || trip <= 0) return false;
+  let h = n > 0 ? trip / n : 0;
+  for (let i = 0; i < 60; i++) {
+    h = nextHeadway(h, dir);
+    // the shortest headway's step down is no service, which is the wrong way for more trains
+    if (h <= 0) return dir > 0 && setRest(id, row, demand, 0);
+    const to = autoTrainsFor(trip, h, limitS, loop);
+    if (dir > 0 ? to < n : to > n) return setRest(id, row, demand, to);
+    if (h >= HEADWAY_MAX_S) return dir > 0 && setRest(id, row, demand, 0);
+  }
+  return false;
+}
+
+/** Set a line's trains for a level on weekend days or holidays (`row` 1 or 2), kept between none
+ * and the weekdays' count; false when that changes nothing (the stepper shakes). */
+function setRest(id: LineId, row: number, demand: Demand, want: number): boolean {
   const wk = trainsShown(id);
   if (!wk || (row !== 1 && row !== 2)) return false;
   const all = [...restShown(id, 1)!, ...restShown(id, 2)!];
-  const i = (row - 1) * 3 + DEMAND_INDEX[demand], k = trainStep(id);
-  const to = Math.max(0, Math.min(wk[DEMAND_INDEX[demand]], all[i] + by * k));
+  const i = (row - 1) * 3 + DEMAND_INDEX[demand];
+  const to = Math.max(0, Math.min(wk[DEMAND_INDEX[demand]], want));
   if (to === all[i]) return false;
   all[i] = to;
-  const same = all.every((n, j) => n === wk[j % 3]);
   pendingRest.value = new Map(pendingRest.value).set(id, all);
-  void edit({ op: "lineRest", line: num(id), counts: same ? null : all }, false, true).finally(() => {
+  void edit({ op: "lineRest", line: num(id), counts: all }, false, true).finally(() => {
     if (pendingRest.peek().get(id) !== all) return;
     const m = new Map(pendingRest.peek());
     m.delete(id);

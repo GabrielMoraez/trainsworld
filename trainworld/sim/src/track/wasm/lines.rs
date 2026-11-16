@@ -508,6 +508,7 @@ impl TrackApi {
     pub fn set_train_counts(&mut self, id: u32, high: u32, medium: u32, low: u32) -> u32 {
         let Some(d) = self.w.net.line_data(id) else { return self.refuse(Issue::NoSuchLine { line: id }) };
         let [high, medium, low] = if pairs_split(&self.w.net, id) { [high, medium, low].map(|x| x.div_ceil(2)) } else { [high, medium, low] };
+        pin_rest(&mut self.w.net, id);
         if d.auto.is_some() {
             return self.run(Op::AutoTrains { id, auto: None, trains: Some([high, medium, low]) });
         }
@@ -560,6 +561,7 @@ impl TrackApi {
             (None, None) => svc.map_or([0; 3], |s| s.trains),
             _ => std::array::from_fn(|lev| auto_trains(trip[lev], auto[lev])),
         };
+        pin_rest(&mut self.w.net, id);
         self.run(Op::AutoTrains { id, auto: Some(auto), trains: Some(trains) })
     }
 
@@ -764,6 +766,16 @@ fn route_stop_ways(net: &Network, pts: &[[f64; 2]], plan: &crate::track::bus::Pl
 }
 
 /// T-3333: line `l` runs on both pairs, so its stored counts and headways are one pair's.
+/// Before the player changes a line's weekday trains: a line still running them every day keeps
+/// them on weekend days and holidays, so a weekday edit leaves the other kinds of day as they were.
+/// Outside the undo history, as it changes no departure (the pinned counts are the weekdays').
+fn pin_rest(net: &mut Network, l: u32) {
+    let i = l as usize;
+    if let (Some(None), Some(Some(t))) = (net.line_rest.get(i).copied(), net.line_trains.get(i).copied()) {
+        net.line_rest[i] = Some([t; 2]);
+    }
+}
+
 fn pairs_split(net: &Network, l: u32) -> bool {
     net.line_twin_of(l) == (crate::track::twin::Twin::Parent { split: true })
 }

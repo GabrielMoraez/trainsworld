@@ -291,7 +291,8 @@ purpose filter the purpose drawn is ringed in the bar.
   Holidays hold steppers of the line's counts on those days (`RestCells`, `stepRest` in
   `game/world.ts`), from none to the weekday count (the up arrow's hover at it "No more trains than
   on weekdays"), showing the weekday counts until one is set, and the headway each gives at the
-  weekday round trip; the level in force now is bold in the section of the line's kind of day today;
+  weekday round trip; under headways those rows step the headway instead, by the weekday steps, to
+  the count that keeps it (`stepRestHeadway`), the count shown beside it; the level in force now is bold in the section of the line's kind of day today;
   every cell one line, the Demand column cut with an ellipsis when short of room [T-692]; beside the
   heading two small muted icon buttons, copy and paste [T-1293, `game/scheduleCopy.ts`]: copy keeps
   the line's trains or headways per level, train length and kind of train in the browser

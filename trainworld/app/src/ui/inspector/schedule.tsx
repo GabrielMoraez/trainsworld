@@ -22,7 +22,7 @@ import { DEMAND_INDEX, DEMANDS, loopHalves, type Demand, type LineInput, type Li
 import { pendingLabel } from "../../game/lineFigures";
 import { liveMoney, moneyState, type MoneyState } from "../../game/money";
 import { demandView, lineFiguresIn } from "../../game/demand";
-import { AUTO_SLACK, autoTrainsFor, headwayFromMinutes, headwayShown, nextHeadway, refusedForCash, restShown, setAutoTrains, setHeadway, setTrainCount, stepHeadway, stepRest, stepTrainCount, trainCap, trainsShown, world, MAX_TYPED_VEHICLES } from "../../game/world";
+import { AUTO_SLACK, autoTrainsFor, headwayFromMinutes, headwayShown, nextHeadway, refusedForCash, restShown, setAutoTrains, setHeadway, setTrainCount, stepHeadway, stepRest, stepRestHeadway, stepTrainCount, trainCap, trainsShown, world, MAX_TYPED_VEHICLES } from "../../game/world";
 import { Row, Segmented, Stepper } from "../widgets";
 import { demandPending, Spinner } from "../Spinner";
 
@@ -181,11 +181,26 @@ function DayHeading({ row, v }: { row: number; v: Vehicle }) {
 
 /** A level's cells on weekend days (`row` 1) or holidays (2): its count, at most the weekdays'
  * (`restShown`), and the headway it gives at the weekdays' round trip. */
-function RestCells({ l, st, d, row }: { l: LineInput; st: LineStats; d: Demand; row: number }) {
+function RestCells({ l, st, d, row, auto, limits }: { l: LineInput; st: LineStats; d: Demand; row: number; auto: boolean; limits: (Limit | null)[] }) {
   const v = vehicleOf(st), lev = DEMAND_INDEX[d];
   const n = restShown(l.id, row)?.[lev] ?? 0, most = trainsShown(l.id)?.[lev] ?? 0;
   const twin = st.twin ? world.value?.save.lines.find((x) => x.id === st.twin) : undefined;
   const tph = most > 0 ? ((l.tph[d] + (twin?.tph[d] ?? 0)) * n) / most : 0;
+  if (auto) {
+    // under headways, as the weekdays' rows: the headway is stepped and the count follows it
+    const trip = st.roundTripByLevel[lev];
+    const atMost = n >= most ? t("schedule.restMost", { vehicle: v }) : undefined;
+    return (
+      <>
+        <td>{n}</td>
+        <td>
+          <Stepper wide label={t("schedule.restHeadwayLabel", { day: DAY_SECTIONS[row] })} value={headwayText(tph > 0 ? 3600 / tph : 0)}
+            onStep={(s) => stepRestHeadway(l.id, row, d, s, trip, limits[lev]?.s ?? 0, loopHalves(st))}
+            tipDown={atMost} />
+        </td>
+      </>
+    );
+  }
   return (
     <>
       <td>
@@ -268,7 +283,7 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
             {DEMANDS.map((d) => (
               <tr class={d === now && today === row ? "now" : ""}>
                 <td><span data-tip={levelTimes(d)}>{demandLabel(d)}</span></td>
-                <RestCells l={l} st={st} d={d} row={row} />
+                <RestCells l={l} st={st} d={d} row={row} auto={auto !== null} limits={limits} />
               </tr>
             ))}
           </>
