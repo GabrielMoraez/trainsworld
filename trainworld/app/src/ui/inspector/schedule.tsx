@@ -224,7 +224,7 @@ export function Schedule({ l, st, now, limits = NO_LIMITS, crowd = null, canAuto
   const stops = l.stops.length;
   // T-2661: the crowding bar in a level's hover reads west to east
   const w = world.value, flip = !!w && lineReversed(l, w, !!st.loop);
-  // the line's kind of day now in its local time, whose section holds the level in force
+  // the same level is in force in all three sections, so only today's kind of day bolds it
   const today = rowIn(lineCountry(l.stops), Math.floor(lineSeconds(st) / 86400));
   return (
     <>

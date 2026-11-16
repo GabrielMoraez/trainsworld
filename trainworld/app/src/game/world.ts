@@ -148,7 +148,8 @@ function changeTrains(id: LineId, demand: Demand, to: (now: number, step: number
 // weekend days and on holidays, at most the weekdays' count of that level (fewer trains only ever
 // free the track the weekdays' were checked against).
 
-/** Counts sent and not yet in the world, as `pendingTrains`. */
+/** Counts sent and not yet in the world, as `pendingTrains`: a second click before the first edit
+ * lands steps from the first's count, not the world's older one. */
 const pendingRest = signal<ReadonlyMap<LineId, number[]>>(new Map());
 
 /** A line's trains on kind of day `row` (1 weekend days, 2 holidays) per level as they show: its own,

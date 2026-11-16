@@ -30,7 +30,7 @@ export const idleLines = computed<ReadonlySet<string>>(() => {
     for (const id in w.lineStats) {
       const st: LineStats = w.lineStats[id];
       const lev = DEMAND_INDEX[demandAt(lineSeconds(st))];
-      // today's kind of day's trains (`restShown` reads the counts still on their way too)
+      // a line whose weekend count is 0 is idle on a Saturday though its weekday count is not
       const n = trainsNowAt(id, lev);
       if (st.status !== "running" || !(n > 0) || st.autoS?.[lev] === 0) out.add(id);
     }

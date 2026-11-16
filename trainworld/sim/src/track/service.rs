@@ -423,7 +423,6 @@ pub(crate) fn lattice_deps_local(lat: &Lattice, r: usize, a: f64, b: f64, out: &
     }
     // the next day's first stretch starts `lead` before it
     for day in d0..=d1 + 1 {
-        // each day its own kind's trains (weekday, weekend day, holiday)
         let (levels, next) = (lat.levels_on(day), lat.levels_on(day + 1));
         for &s in &level_stretches(&levels) {
             let Some((ps, hw, n)) = stretch_points(lat, r, day, s, &levels, &next) else { continue };

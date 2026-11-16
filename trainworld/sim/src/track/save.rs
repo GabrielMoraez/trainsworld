@@ -526,7 +526,8 @@ pub fn encode(net: &Network) -> Vec<u8> {
             if kind == 3 { w.u(j as u64); }
         }
     }
-    // weekend and holiday trains, after LTW1, only for lines that have them
+    // after LTW1, as the blocks are read in order; only lines with counts of their own, so every
+    // other save is byte for byte as it was
     let rest: Vec<(usize, [[u32; 3]; 2])> = lines.iter().enumerate().filter_map(|(i, &l)| net.line_rest[l as usize].map(|c| (i, c))).collect();
     if !rest.is_empty() {
         w.0.extend_from_slice(b"LDT1");

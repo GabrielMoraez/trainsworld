@@ -1124,7 +1124,7 @@ line panel's round-trip split, waiting at busy track among it: [ui-inspectors.md
   (`PERIOD_LEVEL`; Anita, 2026-10-27, T-1536) on every kind of day. **Weekend and holiday trains**
   (`LineData::rest`, `Network::line_rest`): a line may set its own count per level for weekend days
   and for holidays, each at most its weekday count of that level, so the track the weekday trains
-  were checked against always holds them; with none every day runs the weekday counts (T-2335). A
+  were checked against always holds them; with none every day runs the weekday counts. A
   day's kind is the week's (`params::row_of_day`: Saturday and Sunday the weekend) unless the line's
   calendar says otherwise (`service::Cal`, 12 local days the clock worker sends,
   `TrackApi::set_line_rows`, from `rowOfIn` in `game/holidayCalendar.ts`): public holidays and a

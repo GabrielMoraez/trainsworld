@@ -65,7 +65,8 @@ export function holidayName(d: HolidayData | null, country: string | null | unde
 }
 
 /** A country's calendar: its superholiday days' kinds, its days off and weekend days worked (keyed
- * by January 1's weekday and day of the year), and its own week. */
+ * by January 1's weekday and day of the year), and its own week. Built once per country and shared
+ * by `kindOfIn` and `rowOfIn`, so the two never disagree on a day. */
 interface Calendar {
   key: (day: number) => number;
   rush: Map<number, DayKind>;

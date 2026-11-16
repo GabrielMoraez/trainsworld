@@ -2003,7 +2003,7 @@ function regionLines() {
     const [perTrainKm, perCarKm] = a.line_fast(id) ? [prices.hsRunCostTrainKm, prices.hsRunCostCarKm] : [prices.runCostTrainKm, prices.runCostCarKm];
     const f = a.line_run_factor(id); // T-2669: its countries' prices
     const ways = a.line_one_way(id) ? 1 : 2; // T-2981
-    // each kind of day at its own trains (`TrackApi.line_tph_on`)
+    // the rates from the track model, so the cost drained is that of the trains it runs
     const tph = [0, 1, 2, 3, 4, 5, 6, 7, 8].map((k) => a.line_tph_on(id, Math.floor(k / 3), k % 3));
     const run = tph.map((t) => t * ways * km * (perTrainKm + perCarKm * cars) * unit * f);
     costs.push({ id, shift: a.line_shift(id), run, tail: runTail(li, i, run, tph), rowOf: rowOfLine(id), shares: lineShares.get(id)?.run ?? [] });
@@ -2193,8 +2193,8 @@ function localGroups(): { shift: number; costs: CostPart[]; parts: CountryPart[]
   const a = api!;
   const shifts = [...a.running_shifts()];
   const costs = regionLines().costs;
-  // each kind of day runs its own trains; a group's lines in one country take its holidays, else
-  // the week's
+  // lines in several countries have no one holiday calendar between them, so such a group takes the
+  // week's
   const countries = [...new Set([...lineIncome.keys(), ...lineRides.keys()].map((id) => lineCountries.get(id) ?? ""))];
   const costParts = (s: number | null, running: number[]): CostPart[] => {
     let tail: number[][] | undefined;

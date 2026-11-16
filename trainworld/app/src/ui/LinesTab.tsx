@@ -177,7 +177,6 @@ export function LinesTab() {
     try { await createLine(); } finally { setCreating(false); }
   };
   // a line that is not running has no train count and no riders: it sorts as zero
-  // its kind of day's trains (weekdays, weekend days, holidays)
   const trains = (id: string) => (w.lineStats[id]?.status === "running" ? trainsNowAt(id, levOf(id)) : 0);
   // T-1813: while the player's hand order holds, no sort
   const hand = handOrder.value.lines;

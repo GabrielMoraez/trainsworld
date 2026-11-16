@@ -62,7 +62,7 @@ where it reads directions. Both keep the weekday's crowded route and mode choice
 would crowd less). **Each kind of day runs its own trains**: each level in its own hours, high 6-20,
 medium 20-24, low 0-6, every day, at the line's count for the kind of day (weekdays, weekend days,
 holidays; [track-and-service.md](track-and-service.md) "Scheduling"), the weekdays' unless the line
-has fewer of its own (T-2335 had every day run the weekdays'). The boarding account works out a
+has fewer of its own. The boarding account works out a
 weekend day's crowding from its scaled riders on that day's trains, and running cost follows them.
 The solve is a weekday's, on the weekday counts; weekend and holiday riders are still scaled from it,
 so fewer weekend trains crowd them rather than lose them. **A superholiday's day away** (T-264) is a fourth kind,

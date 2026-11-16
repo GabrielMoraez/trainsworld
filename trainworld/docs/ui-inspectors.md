@@ -286,7 +286,7 @@ purpose filter the purpose drawn is ringed in the bar.
   [track-and-service.md](track-and-service.md) 6.3; columns Demand, Trains and Headway, and
   three sections one under another so the table stays narrow, each headed by its kind of day
   (Weekdays, Weekend, Holidays; the heading's hover says which days) with a row per level: Weekdays
-  holds the line's counts as before (or, under headways, the counts the headway gives); Weekend and
+  holds the line's weekday counts (or, under headways, the counts the headway gives); Weekend and
   Holidays hold steppers of the line's counts on those days (`RestCells`, `stepRest` in
   `game/world.ts`), from none to the weekday count (the up arrow's hover at it "No more trains than
   on weekdays"), showing the weekday counts until one is set, and the headway each gives at the
